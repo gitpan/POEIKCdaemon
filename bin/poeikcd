@@ -1,0 +1,85 @@
+#!/usr/local/bin/perl
+
+package poeikcd;
+
+use strict;
+use v5.8.1;
+our $VERSION = '0.00_00';
+
+use warnings;
+use Data::Dumper;
+
+use Getopt::Long;
+
+my %options = ();
+GetOptions (\%options, qw/
+	port=i 
+	session_alias|session|alias=s
+	/);
+
+$options{session_alias} ||= 'POEIKCd';
+$options{port} ||= 54321;
+#join "\n"=>%options;
+for ($ARGV[0] || '') {
+	/stop/i and do {
+		use POE::Component::IKC::ClientLite;
+		my ($name) = $0 =~ /(\w+)\.\w+/;
+		$name .= $$;
+		my $ikc = create_ikc_client(
+			ip => '127.0.0.1',
+			port => $options{port},
+			name => $name,
+		);
+		$ikc or do{
+			printf "%s\n\n",$POE::Component::IKC::ClientLite::error; 
+			exit;
+		};
+		my $ret = $ikc->post_respond(
+			$options{session_alias}.'/method_respond' => 
+			['POEIKCdaemon::Utility' => 'stop']
+		);
+		$ikc->error and die($ikc->error);
+		print join "\t"=>@{$ret},"\n";
+		last;
+	};
+	/start/i and do {
+		use Proc::Daemon;
+		Proc::Daemon::Init;
+		use POEIKCdaemon;
+		POEIKCdaemon->daemon(%options);
+		last;
+	};
+	print("Usage: poeikcd {start|stop}\n");
+}
+
+
+__END__
+
+=head1 NAME
+
+poeikcd - POE IKC daemon
+
+=head1 SYNOPSIS
+
+  poeikcd start -p=54321 # or   poeikcd start --port=54321
+  poeikcd stop  -p=54321 # or   poeikcd stop  --port=54321
+
+=head1 DESCRIPTION
+
+poeikcd (L<POEIKCdaemon>) is daemon of POE::Component::IKC
+
+=head1 AUTHOR
+
+Yuji Suzuki E<lt>yuji.suzuki.perl@gmail.comE<gt>
+
+=head1 LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<POEIKCdaemon>
+L<POE::Component::IKC::ClientLite>
+
+=cut

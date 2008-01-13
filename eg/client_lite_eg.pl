@@ -1,0 +1,47 @@
+#!/usr/local/bin/perl
+
+use strict;
+use warnings;
+use POE::Component::IKC::ClientLite;
+use Data::Dumper;
+
+my $host = '127.0.0.1';
+my $port = $ARGV[0] || 54321;
+
+print scalar localtime,"\n";
+printf "[ %s : %s ]\n", $host, $port;
+my ($name) = $0 =~ /(\w+)\.\w+/;
+$name .= $$;
+my $ikc = create_ikc_client(
+	ip => $host,
+	port => $port,
+	name => $name,
+);
+my $ret;
+$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+	['Cwd' => 'getcwd']
+);
+$ikc->error and die($ikc->error);
+print Dumper $ret;
+
+$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+	['MyClass' => 'my_method', 'args1', 'args2', 'args3 ..' ]
+);
+$ikc->error and die($ikc->error);
+print Dumper $ret;
+
+$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+	['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method']
+);
+$ikc->error and die($ikc->error);
+print Dumper $ret;
+
+$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+	['POEIKCdaemon::Utility' => 'stop']
+);
+$ikc->error and die($ikc->error);
+print Dumper $ret;
