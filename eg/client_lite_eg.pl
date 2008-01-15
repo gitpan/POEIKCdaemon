@@ -18,26 +18,46 @@ my $ikc = create_ikc_client(
 	name => $name,
 );
 my $ret;
+
 $ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
 $ret = $ikc->post_respond('POEIKCd/method_respond' => 
 	['Cwd' => 'getcwd']
 );
 $ikc->error and die($ikc->error);
 print Dumper $ret;
+print '* 'x20,"\n";
 
 $ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
-$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-	['MyClass' => 'my_method', 'args1', 'args2', 'args3 ..' ]
+$ret = $ikc->post_respond('POEIKCd/function_respond' => 
+	['LWP::Simple' => 'get', 'http://search.cpan.org/~suzuki/']
 );
 $ikc->error and die($ikc->error);
 print Dumper $ret;
+print '* 'x20,"\n";
 
-$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
-$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-	['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method']
-);
-$ikc->error and die($ikc->error);
-print Dumper $ret;
+#	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+#	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+#		['POEIKCdaemon::Utility' => 'stay', 'MyClass' ]
+#	);
+#	$ikc->error and die($ikc->error);
+#	print Dumper $ret;
+#	print '* 'x20,"\n";
+
+#	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+#	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+#		['MyClass' => 'my_method', 'args1', 'args2', 'args3 ..' ]
+#	);
+#	$ikc->error and die($ikc->error);
+#	print Dumper $ret;
+#	print '* 'x20,"\n";
+
+#	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+#	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+#		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method']
+#	);
+#	$ikc->error and die($ikc->error);
+#	print Dumper $ret;
+#	print '* 'x20,"\n";
 
 $ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
 $ret = $ikc->post_respond('POEIKCd/method_respond' => 
@@ -45,3 +65,5 @@ $ret = $ikc->post_respond('POEIKCd/method_respond' =>
 );
 $ikc->error and die($ikc->error);
 print Dumper $ret;
+print '* 'x20,"\n";
+

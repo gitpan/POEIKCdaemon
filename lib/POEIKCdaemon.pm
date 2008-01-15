@@ -2,7 +2,7 @@ package POEIKCdaemon;
 
 use strict;
 use v5.8.1;
-our $VERSION = '0.00_00';
+our $VERSION = '0.00_01';
 
 use warnings;
 use Data::Dumper;
@@ -17,22 +17,31 @@ use POE qw(
 );
 
 use base qw(Class::Accessor::Fast);
+use POEIKCdaemon::Utility;
 
 our %inc = %INC;
+
+__PACKAGE__->mk_accessors(qw/pidu session_alias ikc_self_port/);
+
 
 ####
 
 sub daemon {
 	my $class = shift || __PACKAGE__ ;
-	my $self = $class->init;
+	my $self = $class->new;
 	my %opt = @_;
-	my $session_alias = $opt{session_alias} || 'POEIKCd';
-	my $ikc_self_port = $opt{port} || $ARGV[0] || 54321;
-	$0 = "poeikcd session_alias:$session_alias port:$ikc_self_port";
-	$self->spawn(
-		session_alias => $session_alias, 
-		ikc_self_port => $ikc_self_port
-	);
+
+	$self->session_alias($opt{session_alias} || 'POEIKCd');
+	$self->ikc_self_port($opt{port} || $ARGV[0] || 54321);
+	$self->pidu(POEIKCdaemon::Utility->new);
+	$self->pidu->init();
+	$self->pidu->inc(\%inc);
+	$self->pidu->stay(args=>['POEIKCdaemon::Utility']);
+
+	$0 = sprintf "poeikcd session_alias:%s port:%s",
+				$self->session_alias, $self->ikc_self_port;
+
+	$self->spawn();
 	$self->poe_run();
 }
 
@@ -40,21 +49,13 @@ sub poe_run {
 	POE::Kernel->run();
 }
 
-sub init {
-	my $class = shift ;
-	my $self = $class->new();
-	return $self;
-}
 
 sub spawn
 {
 	my $self = shift;
-	my %args = @_;
-	$self->{session_alias} = $args{session_alias};
-	$self->{ikc_self_port} = $args{ikc_self_port};
 
 	POE::Component::IKC::Server->spawn(
-		port => $args{ikc_self_port} ,
+		port => $self->ikc_self_port ,
 		name => __PACKAGE__,
 		aliases  => [ __PACKAGE__ . Sys::Hostname::hostname],
 	);
@@ -71,22 +72,22 @@ sub _start {
 	my $object = $poe->object;
 
 	printf "[ %s ] PID:%s, SESSION_ALIAS:%s, PORT:%s ... start!! \n", 
-		scalar(localtime), $$, $object->{session_alias}, $object->{ikc_self_port};
+		scalar(localtime), $$, $object->session_alias, $object->ikc_self_port;
 	
 	my $kernel = $poe->kernel;
 
 	$object->{start_time} = time;
-	$kernel->alias_set($object->{session_alias});
+	$kernel->alias_set($object->session_alias);
 
 	# 終了処理 を登録
-	$kernel->sig( HUP  => '_stop' );
-	$kernel->sig( INT  => '_stop' );
-	$kernel->sig( TERM => '_stop' );
-	$kernel->sig( KILL => '_stop' );
+	$kernel->sig( HUP  => '__stop' );
+	$kernel->sig( INT  => '__stop' );
+	$kernel->sig( TERM => '__stop' );
+	$kernel->sig( KILL => '__stop' );
 
 	$kernel->call(
 		IKC =>
-			publish => $object->{session_alias}, Class::Inspector->methods(__PACKAGE__),
+			publish => $object->session_alias, Class::Inspector->methods(__PACKAGE__),
 	);
 
 #	$kernel->post(IKC=>'monitor', '*'=>{
@@ -118,7 +119,7 @@ sub _stop{
 	$poe->kernel->stop();
 
 	printf "[ %s ] PID:%s, SESSION_ALIAS:%s, PORT:%s ... stop!! \n", 
-		scalar(localtime), $$, $object->{session_alias}, $object->{ikc_self_port};
+		scalar(localtime), $$, $object->session_alias, $object->ikc_self_port;
 
 }
 
@@ -127,13 +128,23 @@ sub method_respond{
 	my $kernel = $poe->kernel;
 	my ($request) = @{$poe->args};
 
-	$kernel->yield(execute_respond => @{$request});
+	$kernel->yield(execute_respond => 'method', @{$request});
+}
+
+
+sub function_respond{
+	my $poe = sweet_args;
+	my $kernel = $poe->kernel;
+	my ($request) = @{$poe->args};
+
+	$kernel->yield(execute_respond => 'function', @{$request});
 }
 
 sub execute_respond {
 	my $poe = sweet_args;
 	my $kernel = $poe->kernel;
-	my ( $args, $rsvp ) = @{$poe->args};
+	my $object = $poe->object;
+	my ( $from, $args, $rsvp , ) = @{$poe->args};
 
 	ref $args ne 'ARRAY' and
 		return $kernel->call( IKC => post => $rsvp, 
@@ -142,23 +153,32 @@ sub execute_respond {
 	my $module = shift @{$args};
 	my $method = shift @{$args};
 
-	Class::Inspector->loaded( $module ) or $module->use or 
+	$object->pidu->use(module=>$module) or 
 		return $kernel->call( IKC => post => $rsvp, {poeikcd_error=>$@} );
 
 	if ($module eq 'POEIKCdaemon::Utility'){
-
-		my @re = eval {$module->$method($poe, $rsvp, @{$args});};
+		my @re = eval {
+			$object->pidu->$method(
+				poe=>$poe, rsvp=>$rsvp, from=>$from, module=>$module, args=>$args
+			);
+		};
 		my $re = @re == 1 ? shift @re : \@re;
 		$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
 			$kernel->post( IKC => post => $rsvp, $re );
-		
 		return;
 	}
 
-	my @re = eval {$module->$method(@{$args});};
+	my @re = $from =~ /method/ ? 
+		eval   { $module->$method( @{$args} )} : eval {
+			no strict 'refs';
+			my $code = *{"${module}::$method"};
+			$code->( @{$args} );
+		};
+
 	my $re = @re == 1 ? shift @re : \@re;
+
 	$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
-	$kernel->post( IKC => post => $rsvp, $re );
+		 $kernel->post( IKC => post => $rsvp, $re );
 }
 
 
@@ -195,9 +215,19 @@ And then
 		name => $name,
 	);
 	my $ret;
+
+	# method_respond
 	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
 	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
 		['Cwd' => 'getcwd']
+	);
+	$ikc->error and die($ikc->error);
+	print Dumper $ret;
+
+	# function_respond
+	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+	$ret = $ikc->post_respond('POEIKCd/function_respond' => 
+		['LWP::Simple' => 'get', 'http://search.cpan.org/~suzuki/']
 	);
 	$ikc->error and die($ikc->error);
 	print Dumper $ret;
@@ -209,12 +239,22 @@ And then
 	$ikc->error and die($ikc->error);
 	print Dumper $ret;
 
+	# reload
 	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
 	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
 		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method']
 	);
 	$ikc->error and die($ikc->error);
 	print Dumper $ret;
+
+	# stay , It is not reload.
+	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+		['POEIKCdaemon::Utility' => 'stay', 'MyClass' ]
+	);
+	$ikc->error and die($ikc->error);
+	print Dumper $ret;
+	print '* 'x20,"\n";
 
 	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
 	$ret = $ikc->post_respond('POEIKCd/method_respond' => 

@@ -1,4 +1,8 @@
 Revision history for Perl extension POEIKCdaemon
 
+0.00_01  Tue Jan 15 12:07:47 2008
+        - A functional-oriented interface can be used now.
+        - not do reload. A module name can be specified now.
+
 0.00_00  Mon Jan 14 07:42:02 2008
         - original version

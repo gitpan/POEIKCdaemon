@@ -4,17 +4,22 @@ package poeikcd;
 
 use strict;
 use v5.8.1;
-our $VERSION = '0.00_00';
 
 use warnings;
 use Data::Dumper;
-
 use Getopt::Long;
 
+use POEIKCdaemon;
+
+our $VERSION = $POEIKCdaemon::VERSION;
+
+
 my %options = ();
+
 GetOptions (\%options, qw/
 	port=i 
 	session_alias|session|alias=s
+	version
 	/);
 
 $options{session_alias} ||= 'POEIKCd';
@@ -45,10 +50,15 @@ for ($ARGV[0] || '') {
 	/start/i and do {
 		use Proc::Daemon;
 		Proc::Daemon::Init;
-		use POEIKCdaemon;
 		POEIKCdaemon->daemon(%options);
 		last;
 	};
+
+	exists $options{version} and do {
+		printf "poeikcd version: %s\n", $VERSION;
+		last;
+	};
+
 	print("Usage: poeikcd {start|stop}\n");
 }
 

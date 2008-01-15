@@ -2,10 +2,9 @@
 
 ###	perl -I t -I lib -MPOEIKCdaemon -e POEIKCdaemon::daemon
 $ARGV[0] or exit(print "
-### perl eg/client_lite.pl 1 or
-### perl eg/client_lite.pl 2 or
+### perl eg/client_lite.pl 1 
+### perl eg/client_lite.pl 2 
 ### perl eg/client_lite.pl :
-### perl eg/client_lite.pl 11
 \n");
 
 use strict;
@@ -46,11 +45,17 @@ use Sys::Hostname;
 		['POEIKCdaemon::Utility' => 'get_H_INC'],
 		['POEIKCdaemon::Utility' => 'get_pid'],
 		['POEIKCdaemon::Utility' => 'get_port'],
+		['POEIKCdaemon::Utility' => 'get_stay'],
 		['POEIKCdaemon::Utility' => 'stop'],
 		['Cwd' => 'getcwd'],
 		['IKC_d_Localtime' => 'timelocal'],
 		['POEIKCdaemon::Utility' => 'reload', 'IKC_d_Localtime'],
 		['POEIKCdaemon::Utility' => 'reload', 'IKC_d_Localtime' => 'timelocal'],
+		['POEIKCdaemon::Utility' => 'stay', 'IKC_d_Localtime' ],
+		[],
+		[],
+		['Cwd' => 'getcwd'],
+		['LWP::Simple' => 'get', 'http://search.cpan.org/~suzuki/'],
 	);
 
 
@@ -59,7 +64,11 @@ use Sys::Hostname;
 	printf "[%d]\t%s\n", $ARGV[0], join "\t"=>@{$exe{ $ARGV[0] }};
 
 	my $session_alias = $ARGV[2] || 'POEIKCd';
-	$ret = $ikc->post_respond($session_alias.'/method_respond' => $exe{ $ARGV[0] });
+	
+	my $event = $ARGV[0] <= 15 ? 'method_respond' : 'function_respond';
+	print $event,"\n";
+	
+	$ret = $ikc->post_respond($session_alias.'/'.$event => $exe{ $ARGV[0] });
 
 	$ikc->error and die($ikc->error);
 	if (my $r = ref $ret) {
