@@ -15,21 +15,71 @@ __PACKAGE__->mk_accessors(qw/inc/);
 sub init {
 	my $self = shift;
 	$self->inc({});
-	#$self->inc->{stay};
+}
+
+sub unshift_INC {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	for( @{$args{args}} ){
+		unshift @INC, map {s/~/$ENV{HOME}/;$_} split /:/ => $_;
+	}
+	return \@INC;
+}
+
+sub reset_INC {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $path = shift @{$args{args}};
+	@INC = @POEIKCdaemon::inc;
+	return \@INC;
+}
+
+sub delete_INC {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $path = shift @{$args{args}};
+	my @inc;
+	for (@INC) {
+		push @inc, $_ unless $path eq $_;
+	}
+	@INC = @inc;
+	return \@INC;
 }
 
 sub use {
 	my $self = shift;
 	my %args = @_;
-	my $module = $args{module} or return;
-	#my %inc = %INC;
+	my ($poe, $rsvp, $from, $module, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{module}, $args{args} );
+	$module ||=  shift @{$args{args}} or return;
 	return Class::Inspector->loaded( $module ) ? 1 : $module->use() ? 1 : ();
+}
+
+
+sub get_Class_Inspector {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $module = shift @{$args{args}} or return;
+	return not(@{$args}) ? Class::Inspector->methods('Class::Inspector') : do {
+		my $method = shift @{$args};
+		Class::Inspector->$method($module);
+	};
 }
 
 sub stay {
 	my $self = shift;
 	my %args = @_;
-	my $module = $args{args}->[0];
+	my ($poe, $rsvp, $from, $module, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{module}, $args{args} );
+	$module ||= shift @{$args{args}} or return;
 	$self->inc->{stay}->{$module} ||= time;
 }
 
@@ -42,8 +92,8 @@ sub reload {
 	my $self = shift;
 	my %args = @_;
 	my ($poe, $rsvp, $from, $args) = (
-		delete $args{poe}, $args{rsvp}, $args{from}, $args{args} );
-	my $module = $args->[0];
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $module = shift @{$args{args}} or return;
 
 	my @deletelist;
 
@@ -61,7 +111,8 @@ sub reload {
 		
 	}
 
-	if( @{$args} >= 2 ) {
+	if( @{$args} >= 1) {
+		unshift @{$args}, $module;
 		$poe->kernel->call($poe->session => execute_respond => $from, $args, $rsvp,  ) 
 			or return $!;
 	}else{
@@ -69,65 +120,59 @@ sub reload {
 	}
 }
 
-sub get_A_INC {
-	return \@INC;
-}
+sub get_A_INC { return \@INC }
+sub get_H_INC { return \%INC }
+sub get_H_ENV { return \%ENV }
+sub get_pid { return $$ }
+sub get_VERSION { return $POEIKCdaemon::VERSION }
 
-sub get_H_INC {
-	return \%INC;
-}
-
-sub get_H_ENV {
-	return \%ENV;
-}
-
-sub get_pid {
-	return $$;
-}
-
-sub get_port {
+sub get_object_something {
 	my $self = shift;
 	my %args = @_;
 	my $poe = $args{poe};
-	return $poe->object->{ikc_self_port};
+	my ($something) = @{$args{args}};
+	return $poe->object->$something; # ikc_self_port session_alias;
 }
+
 
 sub stop {
 	my $self = shift;
 	my %args = @_;
-	my ($poe, $rsvp, $from, $module, $args) = (
-		$args{poe}, $args{rsvp}, $args{from}, $args{module}, $args{args} );
-	$poe->kernel->call( IKC => post => $rsvp, [scalar(localtime), time, $$] ) or return $!;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	$poe->kernel->call( IKC => post => $rsvp, [scalar(localtime), time, $$, $poe->object->ikc_self_port] ) or return $!;
 	$poe->kernel->post($poe->session => '__stop' ) or $!;
 }
 
 
 
-#sub _DEBUG_header {
-#	Date::Calc->use or return;
-#	my ($pack, $file, $line, $subroutine) = caller(0);
-#	my $levels_up = 0 ;
-#	($pack, $file, $line, ) = caller($levels_up);
-#	$levels_up++;
-#	(undef, undef, undef, $subroutine, ) = caller($levels_up);
-#	{
-#		(undef, undef, undef, $subroutine, ) = caller($levels_up);
-#		if(defined $subroutine and $subroutine eq "(eval)") {
-#		    $levels_up++;
-#		    redo;
-#		}
-#		$subroutine = "main::" unless $subroutine;
-#	}
-#	my $log_header = sprintf "[DEBUG] %04d/%02d/%02d %02d:%02d:%02d %s %d %s %d %s - ",
-#			Date::Calc::Today_and_Now() , $ENV{HOSTNAME}, $$, $file, $line, $subroutine;
-#	my @data = @_;
-#	print(
-#		$log_header, (join "\t" => map {
-#			ref($_) ? Dumper($_) : 
-#			defined $_ ? $_ : "`'" ; 
-#		} @data ), ($Debug::line_flag ? '' : "\n")
-#	);
-#}
+sub _DEBUG_header {
+	$POEIKCdaemon::DEBUG or return;
+	Date::Calc->use or return;
+	#YAML->use or return;
+	my ($pack, $file, $line, $subroutine) = caller(0);
+	my $levels_up = 0 ;
+	($pack, $file, $line, ) = caller($levels_up);
+	$levels_up++;
+	(undef, undef, undef, $subroutine, ) = caller($levels_up);
+	{
+		(undef, undef, undef, $subroutine, ) = caller($levels_up);
+		if(defined $subroutine and $subroutine eq "(eval)") {
+		    $levels_up++;
+		    redo;
+		}
+		$subroutine = "main::" unless $subroutine;
+	}
+	my $log_header = sprintf "[DEBUG %04d/%02d/%02d %02d:%02d:%02d %s %d %s %d %s] - ",
+			Date::Calc::Today_and_Now() , $ENV{HOSTNAME}, $$, $file, $line, $subroutine;
+	my @data = @_;
+	print(
+		$log_header, (join "\t" => map {
+			ref($_) ? Dumper($_) : 
+			defined $_ ? $_ : "`'" ; 
+		} @data )
+	);
+}
 
 
 1;

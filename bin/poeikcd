@@ -1,32 +1,70 @@
 #!/usr/local/bin/perl
 
-package poeikcd;
-
 use strict;
 use v5.8.1;
 
 use warnings;
 use Data::Dumper;
 use Getopt::Long;
+use UNIVERSAL::require;
 
-use POEIKCdaemon;
+my $options;
+my $foreground;
+my $command = shift || '';
 
-our $VERSION = $POEIKCdaemon::VERSION;
+BEGIN {
+
+	my %opt = ();
+	GetOptions (\%opt, qw/
+		port=i 
+		session_alias|session|alias=s
+		lib|I=s
+		version
+		foreground
+		debug
+		/);
+	# $opt{foreground} # Run in the foreground
+	unshift(@INC, map {s/~/$ENV{HOME}/;$_} split(/:/=>$opt{lib})) if (exists $opt{lib});
+	$options = \%opt;
+}
 
 
-my %options = ();
-
-GetOptions (\%options, qw/
-	port=i 
-	session_alias|session|alias=s
-	version
-	/);
+my %options = %{$options};
 
 $options{session_alias} ||= 'POEIKCd';
 $options{port} ||= 54321;
-#join "\n"=>%options;
-for ($ARGV[0] || '') {
+$foreground = exists $options{foreground} || exists $options{debug} ;
+
+use POEIKCdaemon;
+use POEIKCdaemon::Utility;
+
+if (exists $options{debug}) {
+	no warnings;
+	$POEIKCdaemon::DEBUG = $options{debug};
+	for (qw/POEIKCdaemon POEIKCdaemon::Utility/) {
+		Class::Inspector->loaded( $_ ) or die;
+	}
+}
+
+our $VERSION = $POEIKCdaemon::VERSION;
+
+for ($command) {
+
+	exists $options{version} and do {
+		printf "poeikcd version: %s\n", $VERSION;
+		last;
+	};
+
 	/stop/i and do {
+		if( Proc::ProcessTable->use ){
+			my $proc;
+			for my $ps( @{Proc::ProcessTable->new->table} ) {
+				if ($ps->{pid} != $$ and $ps->{fname} eq 'poeikcd'){
+					$proc++;
+				}
+			}
+			$proc or last;
+		}
 		use POE::Component::IKC::ClientLite;
 		my ($name) = $0 =~ /(\w+)\.\w+/;
 		$name .= $$;
@@ -36,6 +74,13 @@ for ($ARGV[0] || '') {
 			name => $name,
 		);
 		$ikc or do{
+			if( Proc::ProcessTable->use ){
+				for my $ps( @{Proc::ProcessTable->new->table} ) {
+					if ($ps->{pid} != $$ and $ps->{fname} eq 'poeikcd'){
+						print $ps->{cmndline},"\n\n";
+					}
+				}
+			}
 			printf "%s\n\n",$POE::Component::IKC::ClientLite::error; 
 			exit;
 		};
@@ -44,22 +89,27 @@ for ($ARGV[0] || '') {
 			['POEIKCdaemon::Utility' => 'stop']
 		);
 		$ikc->error and die($ikc->error);
-		print join "\t"=>@{$ret},"\n";
+		my ($t1, $t2, $pid, $port) = @{$ret};
+		printf "poeikcd is stopped. (PID:%s, Port:%s, %s)\n", 
+			$pid, $port, $t1  unless $foreground;
 		last;
 	};
 	/start/i and do {
 		use Proc::Daemon;
-		Proc::Daemon::Init;
+		printf "poeikcd is Started. (%s)\n",scalar(localtime) unless $foreground;
+		Proc::Daemon::Init unless $foreground;
 		POEIKCdaemon->daemon(%options);
 		last;
 	};
 
-	exists $options{version} and do {
-		printf "poeikcd version: %s\n", $VERSION;
-		last;
-	};
+	print(<<'	HELP_text');
+	Usage: poeikcd {start|stop}
+	
+	Option
+	-Idirectory --lib    specify @INC/#include directory
+	-v                   poeikcd version
 
-	print("Usage: poeikcd {start|stop}\n");
+	HELP_text
 }
 
 

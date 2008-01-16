@@ -59,6 +59,34 @@ print '* 'x20,"\n";
 #	print Dumper $ret;
 #	print '* 'x20,"\n";
 
+
+$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
+
+########
+
+$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+	['POEIKCdaemon::Utility' => 'get_A_INC']
+);
+$ikc->error and die($ikc->error);
+print Dumper $ret;
+print '* 'x20,"\n";
+
+$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+	['POEIKCdaemon::Utility' => 'unshift_INC', '~/lib'],
+);
+$ikc->error and die($ikc->error);
+print Dumper $ret;
+print '* 'x20,"\n";
+
+$ret = $ikc->post_respond('POEIKCd/method_respond' => 
+		['POEIKCdaemon::Utility' => 'reset_INC'],
+);
+$ikc->error and die($ikc->error);
+print Dumper $ret;
+print '* 'x20,"\n";
+
+########
+
 $ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
 $ret = $ikc->post_respond('POEIKCd/method_respond' => 
 	['POEIKCdaemon::Utility' => 'stop']

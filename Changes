@@ -1,5 +1,9 @@
 Revision history for Perl extension POEIKCdaemon
 
+0.00_02  Thu Jan 17 00:00:17 2008
+        - @INC It can change.
+        - enabled it to check the loaded module by 'Class::Inspector'.
+
 0.00_01  Tue Jan 15 12:07:47 2008
         - A functional-oriented interface can be used now.
         - not do reload. A module name can be specified now.
