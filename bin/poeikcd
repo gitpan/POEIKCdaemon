@@ -6,6 +6,7 @@ use v5.8.1;
 use warnings;
 use Data::Dumper;
 use Getopt::Long;
+use Pod::Usage;
 use UNIVERSAL::require;
 
 my $options;
@@ -13,34 +14,37 @@ my $foreground;
 my $command = shift || '';
 
 BEGIN {
-
-	my %opt = ();
-	GetOptions (\%opt, qw/
+	$Getopt::Long::ignorecase=0;
+	$options = {};
+	GetOptions ($options, qw/
 		port=i 
-		session_alias|session|alias=s
-		lib|I=s
-		version
+		alias=s
+		lib|I=s@
 		foreground
+		version
 		debug
+		help
 		/);
-	# $opt{foreground} # Run in the foreground
-	unshift(@INC, map {s/~/$ENV{HOME}/;$_} split(/:/=>$opt{lib})) if (exists $opt{lib});
-	$options = \%opt;
+	# $options->{foreground} # Run in the foreground
+	unshift(@INC, 
+		map {s/~/$ENV{HOME}/;$_} 
+		map {split(/:/=>$_)} 
+		map {ref $_ ? @{$_} : $_} ($options->{lib})
+	) if (exists $options->{lib});
 }
 
 
-my %options = %{$options};
 
-$options{session_alias} ||= 'POEIKCd';
-$options{port} ||= 54321;
-$foreground = exists $options{foreground} || exists $options{debug} ;
+$options->{alias} ||= 'POEIKCd';
+$options->{port} ||= 47225;
+$foreground = exists $options->{foreground} || exists $options->{debug} ;
 
 use POEIKCdaemon;
 use POEIKCdaemon::Utility;
 
-if (exists $options{debug}) {
+if (exists $options->{debug}) {
 	no warnings;
-	$POEIKCdaemon::DEBUG = $options{debug};
+	$POEIKCdaemon::DEBUG = $options->{debug};
 	for (qw/POEIKCdaemon POEIKCdaemon::Utility/) {
 		Class::Inspector->loaded( $_ ) or die;
 	}
@@ -50,12 +54,18 @@ our $VERSION = $POEIKCdaemon::VERSION;
 
 for ($command) {
 
-	exists $options{version} and do {
+	### OPTION ###
+
+	exists $options->{version} and do {
 		printf "poeikcd version: %s\n", $VERSION;
 		last;
 	};
 
-	/stop/i and do {
+	exists $options->{help} and pod2usage(1);
+
+	### COMMAND ###
+
+	/stop|restart/i and do {
 		if( Proc::ProcessTable->use ){
 			my $proc;
 			for my $ps( @{Proc::ProcessTable->new->table} ) {
@@ -63,53 +73,47 @@ for ($command) {
 					$proc++;
 				}
 			}
-			$proc or last;
+		 	/restart/i ? do{$command='start';redo} : last unless $proc;
 		}
 		use POE::Component::IKC::ClientLite;
 		my ($name) = $0 =~ /(\w+)\.\w+/;
 		$name .= $$;
 		my $ikc = create_ikc_client(
 			ip => '127.0.0.1',
-			port => $options{port},
+			port => $options->{port},
 			name => $name,
 		);
 		$ikc or do{
 			if( Proc::ProcessTable->use ){
 				for my $ps( @{Proc::ProcessTable->new->table} ) {
 					if ($ps->{pid} != $$ and $ps->{fname} eq 'poeikcd'){
-						print $ps->{cmndline},"\n\n";
+						print $ps->{cmndline}," .... already running \n";
 					}
 				}
 			}
 			printf "%s\n\n",$POE::Component::IKC::ClientLite::error; 
 			exit;
 		};
-		my $ret = $ikc->post_respond(
-			$options{session_alias}.'/method_respond' => 
-			['POEIKCdaemon::Utility' => 'stop']
-		);
+		my $ret = $ikc->post_respond($options->{alias}.'/stop_respond');
 		$ikc->error and die($ikc->error);
-		my ($t1, $t2, $pid, $port) = @{$ret};
+		my ($loti, $pid, $port) = @{$ret};
 		printf "poeikcd is stopped. (PID:%s, Port:%s, %s)\n", 
-			$pid, $port, $t1  unless $foreground;
-		last;
+			$pid, $port, $loti  unless $foreground;
+		/restart/i ? do{$command='start';redo} : last;
 	};
+
 	/start/i and do {
 		use Proc::Daemon;
 		printf "poeikcd is Started. (%s)\n",scalar(localtime) unless $foreground;
 		Proc::Daemon::Init unless $foreground;
-		POEIKCdaemon->daemon(%options);
+		POEIKCdaemon->daemon(%{$options});
 		last;
 	};
 
-	print(<<'	HELP_text');
-	Usage: poeikcd {start|stop}
+	### HELP ###
 	
-	Option
-	-Idirectory --lib    specify @INC/#include directory
-	-v                   poeikcd version
+	pod2usage(1)
 
-	HELP_text
 }
 
 
@@ -121,8 +125,32 @@ poeikcd - POE IKC daemon
 
 =head1 SYNOPSIS
 
-  poeikcd start -p=54321 # or   poeikcd start --port=54321
-  poeikcd stop  -p=54321 # or   poeikcd stop  --port=54321
+  poeikcd {start|stop|restart} [options]
+
+  eg:
+    poeikcd start -p 47225
+    poeikcd stop  -p 47225
+
+  Options:
+
+    -p,  --port=#      : Port number to use for connection.
+
+    -a   --alias=s     : Symbolic name, or session alias methods 
+
+    -f   --foreground  : Run in the foreground 
+                         STDOUT & STDERR It outputs.
+                         eg) poeikcd start -f >> ~/logs.txt 2>1& &
+
+    -Idirectory        : specify @INC/#include directory
+         --lib           eg) -I=~/lib:/mylib/ or --lib=~/lib:/mylib/
+
+    -v   --version     : show version number
+
+    -d   --debug       : debug mode. Run in the foreground 
+                         STDOUT & STDERR It outputs.
+
+    -h   --help        : show this help screen
+
 
 =head1 DESCRIPTION
 
@@ -139,7 +167,6 @@ it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<POEIKCdaemon>
-L<POE::Component::IKC::ClientLite>
+L<pikc>
 
 =cut

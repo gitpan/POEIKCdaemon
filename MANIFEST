@@ -1,3 +1,4 @@
+bin/pikc
 bin/poeikcd
 Changes
 eg/client_lite.pl
@@ -20,4 +21,5 @@ MANIFEST			This list of files
 META.yml
 README
 t/00_compile.t
+t/01_POEIKCdaemon.t
 t/IKC_d_Localtime.pm

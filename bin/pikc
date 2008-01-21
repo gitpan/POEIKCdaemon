@@ -1,0 +1,207 @@
+#!/usr/local/bin/perl
+
+use strict;
+use v5.8.1;
+
+use warnings;
+use Getopt::Long;
+use Pod::Usage;
+use Data::Dumper;
+use Sys::Hostname ();
+use UNIVERSAL::require;
+use Best [ [ qw/YAML::XS YAML::Syck YAML/ ], qw/Dump/ ];
+
+my $options;
+my $DEBUG;
+
+BEGIN {
+	$options={};
+	$Getopt::Long::ignorecase=0;
+	GetOptions ($options, qw/
+		HOST=s 
+		port=i 
+		alias=s
+		state_name|state=s
+		debug
+		help
+		output|out=s
+		/);
+}
+
+	my $args = [@ARGV];
+	if (exists $options->{debug}) {
+		$DEBUG = 1;
+		_DEBUG_log($args);
+	}
+
+	$options->{help} 		and	pod2usage(1);
+
+	$options->{alias} ||= 'POEIKCd';
+	$options->{port} ||= 47225;
+	$options->{HOST} ||= '127.0.0.1';
+	$options->{state_name} ||= '';
+	$options->{state_name} = 
+		$options->{state_name} eq 'm' ? 'method_respond' : 
+		$options->{state_name} eq 'f' ? 'function_respond' : 
+		$options->{state_name} eq 'e' ? 'eval_respond' : 
+		(@{$args} == 1 and $args->[0] eq 'stop') ? 'stop_respond' :
+		$options->{state_name};
+
+	$options->{state_name} 	or 	pod2usage(1);
+
+	if( Proc::ProcessTable->use ){
+		for my $ps( @{Proc::ProcessTable->new->table} ) {
+			if ($ps->{fname} eq 'pikc'){
+				$ps->{cmndline} =~ /pikc/;
+				$0 = $ps->{fname}. $';
+			}
+		}
+	}
+
+
+	if (exists $options->{debug}) {
+		_DEBUG_log($options);
+		_DEBUG_log($options->{HOST});
+		_DEBUG_log($options->{port});
+		_DEBUG_log($args);
+	}
+
+
+	use POE::Component::IKC::ClientLite;
+	my ($name) = join('_'=>Sys::Hostname::hostname, ($0 =~ /(\w+)/g), $$);
+	my $ikc = create_ikc_client(
+		ip   => $options->{HOST},
+		port => $options->{port},
+		name => $name,
+	);
+	$ikc or do{
+		printf "%s\n\n",$POE::Component::IKC::ClientLite::error; 
+		exit;
+	};
+
+	my $state_name = $options->{alias}.'/'.$options->{state_name};
+	my $ret = $ikc->post_respond($state_name => $args);
+	$ikc->error and die($ikc->error);
+	if (my $r = ref $ret) {
+		if ( $options->{output} and $options->{output} =~ /^H[YD]$/i and  $r eq 'HASH'){
+			$options->{output} =~ s/^H//i;
+			my %ret = %{$ret};
+			my $max = 0;
+			for(sort keys %ret){length($_) > $max and $max = length($_);}
+			my $format = "%-${max}s= %s";
+			for(sort keys %ret){printf $format, $_, output($ret{$_})}
+			print "\n";
+		}else{
+			print(output($ret));
+		}
+	}else{
+		print(output($ret));
+	}
+
+sub output {
+	$DEBUG and _DEBUG_log(join "\t"=> caller(1));
+	return unless @_;
+	for ($options->{output} || ()) {
+		/^D$|^Dumper$/i	and return Dumper(@_);
+		/^Y$|^YAML$/i  	and return Dump(@_);
+	}
+	return @_; # YAML
+}
+
+sub _DEBUG_log {
+	$DEBUG or return;
+	Date::Calc->use or return;
+	#YAML->use or return;
+	my ($pack, $file, $line, $subroutine) = caller(0);
+	my $levels_up = 0 ;
+	($pack, $file, $line, ) = caller($levels_up);
+	$levels_up++;
+	(undef, undef, undef, $subroutine, ) = caller($levels_up);
+	{
+		(undef, undef, undef, $subroutine, ) = caller($levels_up);
+		if(defined $subroutine and $subroutine eq "(eval)") {
+		    $levels_up++;
+		    redo;
+		}
+		$subroutine = "main::" unless $subroutine;
+	}
+	my $log_header = sprintf "[DEBUG %04d/%02d/%02d %02d:%02d:%02d %s %d %s %d %s] - ",
+			Date::Calc::Today_and_Now() , $ENV{HOSTNAME}, $$, $file, $line, $subroutine;
+	my @data = @_;
+	print(
+		$log_header, (join "\t" => map {
+			ref($_) ? Dumper($_) : 
+			defined $_ ? $_ : "`'" ; 
+		} @data ),"\n"
+	);
+}
+
+
+__END__
+
+=head1 NAME
+
+pikc - POK IKC (poeikcd) Client
+
+=head1 SYNOPSIS
+
+  pikc -H  [options]
+
+  Options:
+
+    -H  --HOST=s        : default 127.0.0.1 
+
+    -p  --port=#        : Port number to use for connection.
+                          default 47225 
+
+    -a  --alias=s       : session alias
+                          default POEIKCd 
+
+    -s  --state_name=s  : state_name (method_respond | function_respond |
+                          eval_respond | stop_respond)
+                          eg)
+                             -state_name=method_respond
+                             -s=m
+
+    -o  --output|out=s  : output method 
+                          -o y | -output=YAML
+                          -o d | -output=Dumper   (Data::Dumper)
+
+    -h  --help
+
+  eg:
+    pikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args1 args2
+
+    pikc -s=method_respond POEIKCdaemon::Utility get_VERSION
+    pikc -s m POEIKCdaemon::Utility get_A_INC -o d
+    pikc -s m POEIKCdaemon::Utility unshift_INC ./t -o d
+    pikc -s m POEIKCdaemon::Utility unshift_INC ~/my_lib -o d
+    pikc -s m POEIKCdaemon::Utility delete_INC  ./t -o d
+    pikc -s m POEIKCdaemon::Utility reset_INC -o d
+    pikc -s m POEIKCdaemon::Utility get_H_ENV -o y
+    pikc -s=function_respond LWP::Simple get http://search.cpan.org/~suzuki/
+    pikc -s=eval_respond 'scalar `ps ux`'
+
+    pokikcd server stop)
+    pikc -H localhost stop
+
+
+=head1 DESCRIPTION
+
+pikc is POE IKC (L<poeikcd>) Client 
+
+=head1 AUTHOR
+
+Yuji Suzuki E<lt>yuji.suzuki.perl@gmail.comE<gt>
+
+=head1 LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<poeikcd>
+L<POE::Component::IKC::ClientLite>
+
+=cut

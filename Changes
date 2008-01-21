@@ -1,5 +1,12 @@
 Revision history for Perl extension POEIKCdaemon
 
+0.00_03  Mon Jan 21 2008
+       - poeikcd --help # show help screen
+       - poeikcd restart # enabled  to restart.
+       - pikc (POE IKC Client Script) 
+       - Default port number   It was made 47225.
+       - eval_respond was prepared.
+
 0.00_02  Thu Jan 17 00:00:17 2008
         - @INC It can change.
         - enabled it to check the loaded module by 'Class::Inspector'.

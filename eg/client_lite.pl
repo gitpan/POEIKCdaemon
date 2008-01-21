@@ -8,25 +8,48 @@ $| = 1;
 use POE::Component::IKC::ClientLite;
 use Data::Dumper;
 use Sys::Hostname;
+use Getopt::Long;
+use Pod::Usage;
 
-	my $host = 'localhost';
-	my $port = $ARGV[1] || 54321;
+my $options = {};
+
+BEGIN {
+	$Getopt::Long::ignorecase=0;
+	$options = {};
+	GetOptions ($options, qw/
+		HOST=s 
+		port=i 
+		alias=s
+		debug
+		help
+		/);
+}
+	my $menu = shift;
+
+	$options->{help} and pod2usage(1);
+
+	$options->{alias} ||= 'POEIKCd';
+	$options->{port} ||= 47225;
+	$options->{state_name} ||= 'method_respond';
+	$options->{HOST} ||= '127.0.0.1';
+	$options->{state_name} = 
+		$options->{state_name} =~ /^m/i ? 'method_respond' : 
+		$options->{state_name} =~ /^f/i ? 'function_respond' : pod2usage(1);
 
 	print scalar localtime,"\n";
-	printf "[poeikcd ..  %s / PORT:%s]\n", $host, $port;
+	printf "[poeikcd ..  %s / PORT:%s]\n", $options->{HOST}, $options->{port};
 
 	my ($name) = $0 =~ /(\w+)\.\w+/;
 	$name .= $$;
-
 	my $ikc = create_ikc_client(
-			ip => $host,
-			port => $port,
+			ip => $options->{host},
+			port => $options->{port},
 			name => $name,
 	);
 
 	$ikc or do{
 		printf "%s\n\n",$POE::Component::IKC::ClientLite::error; 
-		exit;
+		pod2usage(1);
 	};
 
 	my $ret;
@@ -64,16 +87,16 @@ use Sys::Hostname;
 
 	print '*' x 20, "\n";
 
-	$ARGV[0] or printf(" perl eg/client_lite.pl [1 .. %d]", scalar(keys %exe)-1), exit;
+	$menu or printf("\n    perl eg/client_lite.pl [1 .. %d]\n\n", scalar(keys %exe)-1), exit;
 
-	printf "[%d]\t%s\n", $ARGV[0], join "\t"=>@{$exe{ $ARGV[0] }};
+	printf "[%d]\t%s\n", $menu, join "\t"=>@{$exe{ $menu }};
 
-	my $session_alias = $ARGV[2] || 'POEIKCd';
+	my $session_alias = $options->{alias} || 'POEIKCd';
 	
-	my $event = $ARGV[0] <= 15 ? 'method_respond' : 'function_respond';
+	my $event = $menu <= 15 ? 'method_respond' : 'function_respond';
 	print $event,"\n";
-	
-	$ret = $ikc->post_respond($session_alias.'/'.$event => $exe{ $ARGV[0] });
+
+	$ret = $ikc->post_respond($session_alias.'/'.$event => $exe{ $menu });
 
 	$ikc->error and die($ikc->error);
 	if (my $r = ref $ret) {
@@ -88,3 +111,20 @@ use Sys::Hostname;
 		print(Dumper($ret));
 	}
 
+__END__
+
+=head1 SYNOPSIS
+
+  Options:
+
+	-H  --HOST=s        : default 127.0.0.1 
+
+    -p  --port=#        : Port number to use for connection.
+                          default 47224 
+
+    -a  --alias=s       : session alias
+                          default POEIKCd 
+
+    -h  --help
+
+=cut

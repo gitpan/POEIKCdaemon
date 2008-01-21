@@ -4,17 +4,48 @@ use strict;
 use v5.8.1;
 
 use warnings;
-use Data::Dumper;
+use Data::Dumper ();
 
 use Class::Inspector;
 use UNIVERSAL::require;
-use base qw(Class::Accessor::Fast);
 
-__PACKAGE__->mk_accessors(qw/inc/);
+our $DEBUG;
 
-sub init {
+sub DEBUG {
 	my $self = shift;
-	$self->inc({});
+	$DEBUG = shift if @_;;
+}
+
+sub _new {
+    my $class = shift ;
+    my $self = {
+        @_
+        };
+    $class = ref $class if ref $class;
+    bless  $self,$class ;
+    return $self ;
+}
+
+
+sub inc {shift->{inc}}
+
+sub _init {
+	my $self = shift;
+	$self->{inc} = {};
+}
+
+sub get_A_INC { return \@INC }
+sub get_H_INC { return \%INC }
+sub get_H_ENV { return \%ENV }
+sub get_pid { return $$ }
+sub get_VERSION { return $POEIKCdaemon::VERSION }
+
+sub get_object_something {
+	my $self = shift;
+	my %args = @_;
+	my $poe = $args{poe};
+	my ($something) = @{$args{args}};
+	return $poe->object->$something; # ikc_self_port alias;
 }
 
 sub unshift_INC {
@@ -81,6 +112,7 @@ sub stay {
 		$args{poe}, $args{rsvp}, $args{from}, $args{module}, $args{args} );
 	$module ||= shift @{$args{args}} or return;
 	$self->inc->{stay}->{$module} ||= time;
+	return $self->inc->{stay};
 }
 
 sub get_stay {
@@ -113,41 +145,20 @@ sub reload {
 
 	if( @{$args} >= 1) {
 		unshift @{$args}, $module;
-		$poe->kernel->call($poe->session => execute_respond => $from, $args, $rsvp,  ) 
+		$DEBUG and _DEBUG_log( $rsvp, $args);
+		$poe->kernel->call($poe->session => execute_respond => $from, $args, $rsvp,  )
 			or return $!;
+		$rsvp->{responded} = (caller(0))[3];
 	}else{
 		return \@deletelist;
 	}
 }
 
-sub get_A_INC { return \@INC }
-sub get_H_INC { return \%INC }
-sub get_H_ENV { return \%ENV }
-sub get_pid { return $$ }
-sub get_VERSION { return $POEIKCdaemon::VERSION }
-
-sub get_object_something {
-	my $self = shift;
-	my %args = @_;
-	my $poe = $args{poe};
-	my ($something) = @{$args{args}};
-	return $poe->object->$something; # ikc_self_port session_alias;
-}
-
-
-sub stop {
-	my $self = shift;
-	my %args = @_;
-	my ($poe, $rsvp, $from, $args) = (
-		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
-	$poe->kernel->call( IKC => post => $rsvp, [scalar(localtime), time, $$, $poe->object->ikc_self_port] ) or return $!;
-	$poe->kernel->post($poe->session => '__stop' ) or $!;
-}
 
 
 
-sub _DEBUG_header {
-	$POEIKCdaemon::DEBUG or return;
+sub _DEBUG_log {
+	$DEBUG or return;
 	Date::Calc->use or return;
 	#YAML->use or return;
 	my ($pack, $file, $line, $subroutine) = caller(0);
@@ -168,9 +179,9 @@ sub _DEBUG_header {
 	my @data = @_;
 	print(
 		$log_header, (join "\t" => map {
-			ref($_) ? Dumper($_) : 
+			ref($_) ? Data::Dumper::Dumper($_) : 
 			defined $_ ? $_ : "`'" ; 
-		} @data )
+		} @data ),"\n"
 	);
 }
 
@@ -198,14 +209,6 @@ The reload of the module and Method execution.
 		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method']
 	);
 	print Dumper $ret;
-
-A stop of poeikcd
-
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility' => 'stop']
-	);
-	print Dumper $ret;
-
 
 =head1 DESCRIPTION
 
