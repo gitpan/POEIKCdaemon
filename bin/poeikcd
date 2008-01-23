@@ -12,28 +12,37 @@ use UNIVERSAL::require;
 my $options;
 my $foreground;
 my $command = shift || '';
+my @argv = @ARGV;
 
 BEGIN {
 	$Getopt::Long::ignorecase=0;
 	$options = {};
 	GetOptions ($options, qw/
-		port=i 
+		port=i
 		alias=s
-		lib|I=s@
+		INC|inc:s@
 		foreground
 		version
+		Module=s@
 		debug
 		help
-		/);
+	/);
 	# $options->{foreground} # Run in the foreground
+
 	unshift(@INC, 
 		map {s/~/$ENV{HOME}/;$_} 
 		map {split(/:/=>$_)} 
-		map {ref $_ ? @{$_} : $_} ($options->{lib})
-	) if (exists $options->{lib});
+		map {ref $_ ? @{$_} : $_} ($options->{INC})
+	) if (exists $options->{INC});
+
+	map { $_->use or die $@ } map {ref $_ ? @{$_} : $_} ($options->{Module}) 
+		if (exists $options->{Module});
+#	if (exists $options->{Module}) {
+#		 for (map {ref $_ ? @{$_} : $_} ($options->{Module}));
+#	}
 }
 
-
+@{$options->{argv}} = @argv if @argv;
 
 $options->{alias} ||= 'POEIKCd';
 $options->{port} ||= 47225;
@@ -96,9 +105,7 @@ for ($command) {
 		};
 		my $ret = $ikc->post_respond($options->{alias}.'/stop_respond');
 		$ikc->error and die($ikc->error);
-		my ($loti, $pid, $port) = @{$ret};
-		printf "poeikcd is stopped. (PID:%s, Port:%s, %s)\n", 
-			$pid, $port, $loti  unless $foreground;
+		printf $ret;
 		/restart/i ? do{$command='start';redo} : last;
 	};
 
@@ -131,6 +138,8 @@ poeikcd - POE IKC daemon
     poeikcd start -p 47225
     poeikcd stop  -p 47225
 
+    poeikcd start -I ~/lib
+
   Options:
 
     -p,  --port=#      : Port number to use for connection.
@@ -142,7 +151,11 @@ poeikcd - POE IKC daemon
                          eg) poeikcd start -f >> ~/logs.txt 2>1& &
 
     -Idirectory        : specify @INC/#include directory
-         --lib           eg) -I=~/lib:/mylib/ or --lib=~/lib:/mylib/
+        --INC           eg1) -I ~/lib:/mylib/ or -I ~/lib -I /foo/lib/
+                        eg2) poikc -I '$ENV{HOME}/lib'
+
+    -M   --Module      : execute "use/no module..." before executing program
+                         eg) -M LWP::Simple
 
     -v   --version     : show version number
 
@@ -167,6 +180,6 @@ it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<pikc>
+L<poikc>
 
 =cut

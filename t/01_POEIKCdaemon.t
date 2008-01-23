@@ -181,3 +181,6 @@ __END__
 --- input: ['POEIKCdaemon::Utility' => 'reset_INC']
 --- expected: $c->{INC}
 
+=== 16	ok_r	#	POEIKCdaemon::Utility=>get_load
+--- input: ['POEIKCdaemon::Utility' => 'get_load']
+--- expected: 

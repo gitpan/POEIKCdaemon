@@ -1,8 +1,9 @@
-bin/pikc
 bin/poeikcd
+bin/poikc
 Changes
 eg/client_lite.pl
 eg/client_lite_eg.pl
+eg/t-IKC_d_HTTP_client.sh
 inc/Module/Install.pm
 inc/Module/Install/Base.pm
 inc/Module/Install/Can.pm
@@ -22,4 +23,5 @@ META.yml
 README
 t/00_compile.t
 t/01_POEIKCdaemon.t
+t/IKC_d_HTTP_client.pm
 t/IKC_d_Localtime.pm

@@ -2,7 +2,7 @@ package POEIKCdaemon;
 
 use strict;
 use v5.8.1;
-our $VERSION = '0.00_03';
+our $VERSION = '0.00_04';
 
 use warnings;
 use Data::Dumper;
@@ -23,7 +23,7 @@ our @inc = @INC;
 our %inc = %INC;
 our $DEBUG;
 
-__PACKAGE__->mk_accessors(qw/pidu alias ikc_self_port/);
+__PACKAGE__->mk_accessors(qw/pidu argv alias ikc_self_port/);
 
 ####
 
@@ -32,6 +32,7 @@ sub init {
 	my $self = $class->new;
 	my %opt = @_;
 	$DEBUG = $opt{debug};
+	$self->argv($opt{argv}) if $opt{argv};
 	$self->alias($opt{alias} || 'POEIKCd');
 	$self->ikc_self_port($opt{port} || $ARGV[0] || 47225);
 	$self->pidu(POEIKCdaemon::Utility->_new);
@@ -39,13 +40,17 @@ sub init {
 	$self->pidu->DEBUG($DEBUG) if $DEBUG;
 	$self->pidu->inc(\%inc);
 	$self->pidu->stay(module=>'POEIKCdaemon::Utility');
+
+	push @{$opt{Module}}, __PACKAGE__, 'POEIKCdaemon::Utility';
+	$self->pidu->inc->{load}->{$INC{Class::Inspector->filename($_)}} = time for @{$opt{Module}};
+
 	$0 = sprintf "poeikcd alias:%s port:%s",
 				$self->alias, $self->ikc_self_port ;#if $0 =~ /poeikcd/;
 	if ($DEBUG) {
-		POEIKCdaemon::Utility::_DEBUG_log(VERSION=>$VERSION);
-		POEIKCdaemon::Utility::_DEBUG_log($INC{ Class::Inspector->filename(__PACKAGE__)});
+		POEIKCdaemon::Utility::_DEBUG_log(VERSION	=>$VERSION);
+		POEIKCdaemon::Utility::_DEBUG_log(load_module=>$self->pidu->inc->{load});
 		POEIKCdaemon::Utility::_DEBUG_log(GetOptions=>\%opt);
-		POEIKCdaemon::Utility::_DEBUG_log('@INC'=>\@INC);
+		POEIKCdaemon::Utility::_DEBUG_log('@INC'	=>\@INC);
 	}
 	return $self;
 }
@@ -75,6 +80,12 @@ sub spawn
 	    heap => {},
 	    object_states => [ $self =>  Class::Inspector->methods(__PACKAGE__) ]
 	);
+
+#	if ($self->argv){
+#		my ( $session_alias, $event, $args ) = @{$self->argv};
+#		my ( $session_alias, $event, $args ) = @{$self->argv};
+#	}
+
 	return 1;
 }
 
@@ -167,6 +178,28 @@ sub eval_respond {
 		 $kernel->post( IKC => post => $rsvp, $re );
 }
 
+#sub code_respond {
+#	my $poe = sweet_args;
+#	my $kernel = $poe->kernel;
+#	my ($request) = @{$poe->args};
+#	my ($expr, $rsvp) = @{$request};
+#	$expr = shift @{$expr} if ref $expr eq 'ARRAY';
+#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($expr);
+#	my @re = eval {no strict 'refs'; eval($expr)->()};
+#	my $re = @re == 1 ? shift @re : \@re;
+##	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($re);
+#	$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
+#		 $kernel->post( IKC => post => $rsvp, $re );
+#}
+
+sub event_respond {
+	my $poe = sweet_args;
+	my $kernel = $poe->kernel;
+	my ($request) = @{$poe->args};
+
+	$kernel->yield(execute_respond => 'event', @{$request});
+}
+
 sub method_respond {
 	my $poe = sweet_args;
 	my $kernel = $poe->kernel;
@@ -197,8 +230,14 @@ sub execute_respond {
 	my $module = shift @{$args};
 	my $method = shift @{$args};
 
-	$object->pidu->use(module=>$module) or 
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(module => $module);
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(method => $method);
+
+	if($from !~ /^event/ and not $object->pidu->use(module=>$module)) {
 		return $kernel->call( IKC => post => $rsvp, {poeikcd_error=>$@} );
+	}
+
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(from => $from);
 
 	if ($module eq 'POEIKCdaemon::Utility'){
 		$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($rsvp);
@@ -220,18 +259,25 @@ sub execute_respond {
 		return;
 	}
 
-	my @re = $from =~ /method/ ? 
-		eval   { $module->$method( @{$args} )} : eval {
-			no strict 'refs';
-			my $code = *{"${module}::$method"};
-			$code->( @{$args} );
-		};
+	my @re =$from =~ /^method/ 		? eval { $module->$method( @{$args} )} : 
+			$from =~ /^event/ 		? eval { 
+				local $! = undef;
+				$kernel->call( $module => $method, @{$args} )or return $!
+			} :
+			$from =~ /^function/ 	? eval { 
+				no strict 'refs';
+				my $code = *{"${module}::$method"};
+				$code->( @{$args} );
+			} : {poeikcd_error=>'method|function|event._respond'};
 
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(@re);
 	my $re = @re == 1 ? shift @re : \@re;
 
-	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($re);
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($module, $method, $re);
 
-	$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
+	return  $kernel->post( IKC => post => $rsvp, $re ) if $re;
+
+	return $@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
 		 $kernel->post( IKC => post => $rsvp, $re );
 }
 
@@ -253,17 +299,17 @@ L<poeikcd>
 	poeikcd --help
 
 And then 
-L<pikc> (POK IKC Client) 
+L<poikc> (POK IKC Client) 
 
-	pikc --help
+	poikc --help
 
-    pikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args1 args2
+    poikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args1 args2
 
-    pikc -s=method_respond POEIKCdaemon::Utility get_VERSION
-    pikc -s m POEIKCdaemon::Utility get_A_INC -o d
-    pikc -s m POEIKCdaemon::Utility get_H_ENV -o y
-    pikc -s=function_respond LWP::Simple get http://search.cpan.org/~suzuki/
-    pikc -s=eval_respond 'scalar `ps ux`'
+    poikc -s=method_respond POEIKCdaemon::Utility get_VERSION
+    poikc -s m POEIKCdaemon::Utility get_A_INC -o d
+    poikc -s m POEIKCdaemon::Utility get_H_ENV -o y
+    poikc -s=function_respond LWP::Simple get http://search.cpan.org/~suzuki/
+    poikc -s=eval_respond 'scalar `ps ux`'
 
 or 
 use POE::Component::IKC::ClientLite

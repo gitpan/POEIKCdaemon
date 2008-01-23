@@ -8,6 +8,7 @@ use Data::Dumper ();
 
 use Class::Inspector;
 use UNIVERSAL::require;
+use POE::Sugar::Args;
 
 our $DEBUG;
 
@@ -34,11 +35,71 @@ sub _init {
 	$self->{inc} = {};
 }
 
+### get vvvvvvvvvvvvvvvvvvvvvvvvv
+
 sub get_A_INC { return \@INC }
 sub get_H_INC { return \%INC }
 sub get_H_ENV { return \%ENV }
 sub get_pid { return $$ }
 sub get_VERSION { return $POEIKCdaemon::VERSION }
+
+sub get_stay {
+	my $self = shift;
+	return $self->inc->{stay};
+}
+
+sub get_load {
+	my $self = shift;
+	return $self->inc->{load};
+}
+
+sub get_session_alias_list {
+  POE::API::Peek->use or return $@;
+  my $api = POE::API::Peek->new;
+  my %alias;
+	for ($api->session_list()){
+		my $id = $_->ID;
+		my @list = $api->session_alias_list($_);
+		$alias{$id} = (1 == @list) ? shift @list : \@list;
+		#$DEBUG and _DEBUG_log( @list );
+	}
+	return \%alias;
+}
+
+sub get_session_id_list {
+  POE::API::Peek->use or return $@;
+  my $api = POE::API::Peek->new;
+  my @list = $api->session_list();
+		$DEBUG and _DEBUG_log( @list );
+	@list = map {$_->ID} @list;
+	return \@list;
+}
+
+sub get_poe_api_peek {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+  POE::API::Peek->use or return $@;
+  my $subname = shift @{$args{args}} || return;
+  my $api = POE::API::Peek->new;
+  my @list = $api->$subname(@{$args{args}});
+	$DEBUG and _DEBUG_log( @list );
+	return \@list;
+}
+
+
+sub get_Class_Inspector {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $module = shift @{$args{args}} or return;
+	return not(@{$args}) ? Class::Inspector->methods('Class::Inspector') : do {
+		my $method = shift @{$args};
+		Class::Inspector->$method($module);
+	};
+}
 
 sub get_object_something {
 	my $self = shift;
@@ -48,13 +109,15 @@ sub get_object_something {
 	return $poe->object->$something; # ikc_self_port alias;
 }
 
+### ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 sub unshift_INC {
 	my $self = shift;
 	my %args = @_;
 	my ($poe, $rsvp, $from, $args) = (
 		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
 	for( @{$args{args}} ){
-		unshift @INC, map {s/~/$ENV{HOME}/;$_} split /:/ => $_;
+		unshift @INC, map {m'\$' and do{ $_= eval qq{"$_"}} ;s/~/$ENV{HOME}/;$_} split /:/ => $_;
 	}
 	return \@INC;
 }
@@ -89,21 +152,14 @@ sub use {
 	my ($poe, $rsvp, $from, $module, $args) = (
 		$args{poe}, $args{rsvp}, $args{from}, $args{module}, $args{args} );
 	$module ||=  shift @{$args{args}} or return;
-	return Class::Inspector->loaded( $module ) ? 1 : $module->use() ? 1 : ();
+	return Class::Inspector->loaded( $module ) ? 1 : do{
+		$module->use() or return ;
+		$self->inc->{load}->{$INC{Class::Inspector->filename($module)}} ||= time;
+		1;
+	}? 1 : ();
 }
 
 
-sub get_Class_Inspector {
-	my $self = shift;
-	my %args = @_;
-	my ($poe, $rsvp, $from, $args) = (
-		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
-	my $module = shift @{$args{args}} or return;
-	return not(@{$args}) ? Class::Inspector->methods('Class::Inspector') : do {
-		my $method = shift @{$args};
-		Class::Inspector->$method($module);
-	};
-}
 
 sub stay {
 	my $self = shift;
@@ -115,10 +171,6 @@ sub stay {
 	return $self->inc->{stay};
 }
 
-sub get_stay {
-	my $self = shift;
-	return $self->inc->{stay};
-}
 
 sub reload {
 	my $self = shift;
@@ -141,6 +193,7 @@ sub reload {
 
 		{no strict 'refs';%{"${module}::"}=();}
 		
+		delete $self->inc->{load}->{$INC{Class::Inspector->filename($module)}};
 	}
 
 	if( @{$args} >= 1) {
@@ -154,8 +207,23 @@ sub reload {
 	}
 }
 
-
-
+sub publish_IKC {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my ($alias, $event_ary) = ($args{alias}, $args{event});
+	if (not($alias) and not($event_ary) and ($args)){
+		$alias = shift @{$args};
+		my $flag_packagename_or_eventlist = shift @{$args};
+		$event_ary = $flag_packagename_or_eventlist =~ /^_list$/i ? $args : do{
+			Class::Inspector->methods($flag_packagename_or_eventlist);
+		};
+	}
+	$DEBUG and _DEBUG_log( $alias, $event_ary);
+	return  if (not($alias) or not($event_ary));
+	return $poe->kernel->call(IKC =>publish => $alias, $event_ary) || $!;
+}
 
 sub _DEBUG_log {
 	$DEBUG or return;

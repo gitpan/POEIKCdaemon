@@ -1,5 +1,13 @@
 Revision history for Perl extension POEIKCdaemon
 
+0.00_04  Mon Jan 23 2008
+       - pikc name change was made from pikc at poikc.
+       - poikc : -I An option is added and it enabled it to operate INC. 
+                 and --inc_=delete, --inc_=reset
+       - poeikcd : -M An option is added and it enabled it to use a module at the time of compile.
+       - POEIKCdaemon : event_respond was prepared. Got possible to carry out an event of POE.
+       - POEIKCdaemon::Utility : publish_IKC method was prepared. Direct access by IKC is enabled.
+
 0.00_03  Mon Jan 21 2008
        - poeikcd --help # show help screen
        - poeikcd restart # enabled  to restart.
@@ -7,13 +15,13 @@ Revision history for Perl extension POEIKCdaemon
        - Default port number   It was made 47225.
        - eval_respond was prepared.
 
-0.00_02  Thu Jan 17 00:00:17 2008
+0.00_02  Thu Jan 17 2008
         - @INC It can change.
         - enabled it to check the loaded module by 'Class::Inspector'.
 
-0.00_01  Tue Jan 15 12:07:47 2008
+0.00_01  Tue Jan 15 2008
         - A functional-oriented interface can be used now.
         - not do reload. A module name can be specified now.
 
-0.00_00  Mon Jan 14 07:42:02 2008
+0.00_00  Mon Jan 14 2008
         - original version

@@ -22,6 +22,9 @@ BEGIN {
 		port=i 
 		alias=s
 		state_name|state=s
+		INC|inc:s@
+		inc_=s
+		get=s
 		debug
 		help
 		output|out=s
@@ -31,6 +34,7 @@ BEGIN {
 	my $args = [@ARGV];
 	if (exists $options->{debug}) {
 		$DEBUG = 1;
+		_DEBUG_log($options);
 		_DEBUG_log($args);
 	}
 
@@ -39,25 +43,65 @@ BEGIN {
 	$options->{alias} ||= 'POEIKCd';
 	$options->{port} ||= 47225;
 	$options->{HOST} ||= '127.0.0.1';
+
+	
+	### state_name vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	$options->{state_name} ||= '';
+
+
+	if (exists $options->{get}) {
+		my $commoand = $options->{get};
+		$commoand = 'get_'.$options->{get};
+		$options->{state_name} = 'm';
+		@{$args} = ('POEIKCdaemon::Utility', $commoand, @{$args});
+		$options->{output} ||= 'd';
+		_DEBUG_log($args);
+	}
+
+	if (exists $options->{INC}) {
+		my @inc;
+		@inc = 
+#			map {s/~/$ENV{HOME}/;$_} 
+			map {split(/:/=>$_)} 
+			map {ref $_ ? @{$_} : $_} 
+			($options->{INC});
+		$options->{state_name} = 'm';
+		@{$args} = (qw(POEIKCdaemon::Utility unshift_INC), @inc);
+		$options->{output} ||= 'd';
+		_DEBUG_log($args);
+	}
+
+	if (exists $options->{inc_}) {
+		my $commoand = $options->{inc_};
+		$commoand = 
+			$commoand =~ /^del$|^delete$|^delete_INC$/ ? 'delete_INC' :
+			$commoand =~ /^reset$|^reset_INC$/ ? 'reset_INC' : $commoand;
+		$options->{state_name} = 'm';
+		@{$args} = ('POEIKCdaemon::Utility', $commoand, @{$args});
+		$options->{output} ||= 'd';
+		_DEBUG_log($args);
+	}
+
 	$options->{state_name} = 
-		$options->{state_name} eq 'm' ? 'method_respond' : 
-		$options->{state_name} eq 'f' ? 'function_respond' : 
-		$options->{state_name} eq 'e' ? 'eval_respond' : 
-		(@{$args} == 1 and $args->[0] eq 'stop') ? 'stop_respond' :
+		$options->{state_name} =~ /^method|^m$/ 	? 'method_respond' : 
+		$options->{state_name} =~ /^function|^f$/ 	? 'function_respond' : 
+		$options->{state_name} =~ /^eval/ 			? 'eval_respond' : 
+		$options->{state_name} =~ /^event|^e$/ 		? 'event_respond' : 
+		(@{$args} == 1 and $args->[0] eq 'stop') 	? 'stop_respond' :
 		$options->{state_name};
 
 	$options->{state_name} 	or 	pod2usage(1);
 
+	###^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 	if( Proc::ProcessTable->use ){
 		for my $ps( @{Proc::ProcessTable->new->table} ) {
-			if ($ps->{fname} eq 'pikc'){
-				$ps->{cmndline} =~ /pikc/;
+			if ($ps->{fname} eq 'poikc'){
+				$ps->{cmndline} =~ /poikc/;
 				$0 = $ps->{fname}. $';
 			}
 		}
 	}
-
 
 	if (exists $options->{debug}) {
 		_DEBUG_log($options);
@@ -65,7 +109,6 @@ BEGIN {
 		_DEBUG_log($options->{port});
 		_DEBUG_log($args);
 	}
-
 
 	use POE::Component::IKC::ClientLite;
 	my ($name) = join('_'=>Sys::Hostname::hostname, ($0 =~ /(\w+)/g), $$);
@@ -80,6 +123,9 @@ BEGIN {
 	};
 
 	my $state_name = $options->{alias}.'/'.$options->{state_name};
+
+	$DEBUG and _DEBUG_log($state_name, $args);
+
 	my $ret = $ikc->post_respond($state_name => $args);
 	$ikc->error and die($ikc->error);
 	if (my $r = ref $ret) {
@@ -141,11 +187,11 @@ __END__
 
 =head1 NAME
 
-pikc - POK IKC (poeikcd) Client
+poikc - POK IKC (poeikcd) Client
 
 =head1 SYNOPSIS
 
-  pikc -H  [options]
+  poikc -H hostname [options] 
 
   Options:
 
@@ -156,12 +202,23 @@ pikc - POK IKC (poeikcd) Client
 
     -a  --alias=s       : session alias
                           default POEIKCd 
+                          eg)
+                             -a=my_session_ailas
 
     -s  --state_name=s  : state_name (method_respond | function_respond |
-                          eval_respond | stop_respond)
+                          event_respond | eval_respond | stop_respond)
                           eg)
-                             -state_name=method_respond
-                             -s=m
+                             -s=m | -s=f | -s=e | -s=eval
+                             -state_name=my_event_name
+
+    -Idirectory        : specify @INC/#include directory
+        --INC           eg1) -I ~/lib:/mylib/ or -I ~/lib -I /foo/lib/
+                        eg2) poikc -I '$ENV{HOME}/lib'
+
+
+    --inc_=delete ~/lib: deletes from @INC.
+    --inc_=reset       : @INC is reset.
+    --get=s            : -g=stay, -g=load, -g=H_INC, -g=E_ENV
 
     -o  --output|out=s  : output method 
                           -o y | -output=YAML
@@ -170,25 +227,30 @@ pikc - POK IKC (poeikcd) Client
     -h  --help
 
   eg:
-    pikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args1 args2
 
-    pikc -s=method_respond POEIKCdaemon::Utility get_VERSION
-    pikc -s m POEIKCdaemon::Utility get_A_INC -o d
-    pikc -s m POEIKCdaemon::Utility unshift_INC ./t -o d
-    pikc -s m POEIKCdaemon::Utility unshift_INC ~/my_lib -o d
-    pikc -s m POEIKCdaemon::Utility delete_INC  ./t -o d
-    pikc -s m POEIKCdaemon::Utility reset_INC -o d
-    pikc -s m POEIKCdaemon::Utility get_H_ENV -o y
-    pikc -s=function_respond LWP::Simple get http://search.cpan.org/~suzuki/
-    pikc -s=eval_respond 'scalar `ps ux`'
+    poikc -I
+    poikc -I ~/lib:./lib
+    poikc --inc_=delete ~/lib
+    poikc --inc_=reset
 
-    pokikcd server stop)
-    pikc -H localhost stop
+   (pokikcd server stop)
+    poikc stop 
+    poikc -H localhost stop 
+
+    poikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args1 args2
+    poikc -s=e -o=y alias my_method args1 args2
+
+    poikc -s=method_respond POEIKCdaemon::Utility get_VERSION
+    poikc -o d -s m POEIKCdaemon::Utility publish_IKC my_alias_name my_package_name
+    poikc -o d -s m POEIKCdaemon::Utility publish_IKC my_alias_name _list event_1 event_2 ..
+    poikc -s=function_respond LWP::Simple get http://search.cpan.org/~suzuki/
+    poikc -s=eval_respond 'scalar `ps ux`'
+
 
 
 =head1 DESCRIPTION
 
-pikc is POE IKC (L<poeikcd>) Client 
+poikc is POE IKC (L<poeikcd>) Client 
 
 =head1 AUTHOR
 

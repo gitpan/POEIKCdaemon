@@ -20,9 +20,11 @@ requires('YAML');
 build_requires 'Test::More';
 build_requires 'Test::Base';
 build_requires 'Proc::ProcessTable';
+build_requires 'Cwd';
+build_requires 'POE::API::Peek';
 
 install_script 'bin/poeikcd';
-install_script 'bin/pikc';
+install_script 'bin/poikc';
 
 use_test_base;
 auto_include;
