@@ -150,9 +150,9 @@ poeikcd - POE IKC daemon
                          STDOUT & STDERR It outputs.
                          eg) poeikcd start -f >> ~/logs.txt 2>1& &
 
-    -Idirectory        : specify @INC/#include directory
-        --INC           eg1) -I ~/lib:/mylib/ or -I ~/lib -I /foo/lib/
-                        eg2) poikc -I '$ENV{HOME}/lib'
+    -I   --INC=s       : specify @INC/#include directory
+                         eg1) -I ~/lib:/mylib/ or -I ~/lib -I /foo/lib/
+                         eg2) poikc -I '$ENV{HOME}/lib'
 
     -M   --Module      : execute "use/no module..." before executing program
                          eg) -M LWP::Simple

@@ -1,9 +1,14 @@
 Revision history for Perl extension POEIKCdaemon
 
+0.00_05  Mon Jan 28 2008
+       - poikc : --Utility An option is added. POEIKCdaemon::Utility It is shortcut.
+                 This --get An option abolishes.
+       - poikc : --Display An option is added. can confirm the parameter given to post_respond.
+
 0.00_04  Mon Jan 23 2008
        - pikc name change was made from pikc at poikc.
        - poikc : -I An option is added and it enabled it to operate INC. 
-                 and --inc_=delete, --inc_=reset
+                 and then --inc_=delete, --inc_=reset
        - poeikcd : -M An option is added and it enabled it to use a module at the time of compile.
        - POEIKCdaemon : event_respond was prepared. Got possible to carry out an event of POE.
        - POEIKCdaemon::Utility : publish_IKC method was prepared. Direct access by IKC is enabled.

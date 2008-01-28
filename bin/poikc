@@ -24,8 +24,9 @@ BEGIN {
 		state_name|state=s
 		INC|inc:s@
 		inc_=s
-		get=s
+		Utility=s
 		debug
+		Display
 		help
 		output|out=s
 		/);
@@ -42,16 +43,14 @@ BEGIN {
 
 	$options->{alias} ||= 'POEIKCd';
 	$options->{port} ||= 47225;
-	$options->{HOST} ||= '127.0.0.1';
-
 	
 	### state_name vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	$options->{state_name} ||= '';
 
 
-	if (exists $options->{get}) {
-		my $commoand = $options->{get};
-		$commoand = 'get_'.$options->{get};
+	if (exists $options->{Utility}) {
+		my $commoand = $options->{Utility};
+		$commoand = $options->{Utility};
 		$options->{state_name} = 'm';
 		@{$args} = ('POEIKCdaemon::Utility', $commoand, @{$args});
 		$options->{output} ||= 'd';
@@ -91,8 +90,12 @@ BEGIN {
 		$options->{state_name};
 
 	$options->{state_name} 	or 	pod2usage(1);
+	$options->{state_name} eq 'stop_respond' 
+		and not($options->{HOST}) and pod2usage(1);
 
 	###^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+	$options->{HOST} ||= '127.0.0.1';
 
 	if( Proc::ProcessTable->use ){
 		for my $ps( @{Proc::ProcessTable->new->table} ) {
@@ -125,6 +128,14 @@ BEGIN {
 	my $state_name = $options->{alias}.'/'.$options->{state_name};
 
 	$DEBUG and _DEBUG_log($state_name, $args);
+
+	if ($DEBUG or exists $options->{Display}){
+		my $param = ref $args ? Dumper($args): $args;
+		$param =~ s/\s+//g;
+		$param =~ s/\$VAR1=//g;
+		$param =~ s/;//g;
+		printf "\n# \$ikc_client->post_respond( '%s' => %s );\n\n",$state_name => $param ;
+	}
 
 	my $ret = $ikc->post_respond($state_name => $args);
 	$ikc->error and die($ikc->error);
@@ -191,61 +202,66 @@ poikc - POK IKC (poeikcd) Client
 
 =head1 SYNOPSIS
 
-  poikc -H hostname [options] 
+  poikc -H hostname [options] args...
+  poikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args...
 
-  Options:
+Options:
 
-    -H  --HOST=s        : default 127.0.0.1 
+    -H  --HOST=s         : default 127.0.0.1 
 
-    -p  --port=#        : Port number to use for connection.
-                          default 47225 
+    -p  --port=#         : Port number to use for connection.
+                           default 47225 
 
-    -a  --alias=s       : session alias
-                          default POEIKCd 
-                          eg)
+    -a  --alias=s        : session alias
+                           default POEIKCd 
+                           eg)
                              -a=my_session_ailas
 
-    -s  --state_name=s  : state_name (method_respond | function_respond |
-                          event_respond | eval_respond | stop_respond)
-                          eg)
+    -s  --state_name=s   : state_name (method_respond | function_respond |
+                           event_respond | eval_respond | stop_respond)
+                           eg)
                              -s=m | -s=f | -s=e | -s=eval
                              -state_name=my_event_name
 
-    -Idirectory        : specify @INC/#include directory
-        --INC           eg1) -I ~/lib:/mylib/ or -I ~/lib -I /foo/lib/
-                        eg2) poikc -I '$ENV{HOME}/lib'
+    -I  --INC=s          : specify @INC/#include directory
+                           eg1) -I ~/lib:/mylib/ or -I ~/lib -I /foo/lib/
+                           eg2) poikc -I '$ENV{HOME}/lib'
 
 
-    --inc_=delete ~/lib: deletes from @INC.
-    --inc_=reset       : @INC is reset.
-    --get=s            : -g=stay, -g=load, -g=H_INC, -g=E_ENV
+    --inc_=delete ~/lib  : deletes from @INC.
+    --inc_=reset         : @INC is reset.
 
-    -o  --output|out=s  : output method 
+    --Utility=s          : POEIKCdaemon::Utility It is shortcut.
+                          eg) poikc -U=get_VERSION
+                          -U=get_stay, -U=get_load, -U=get_H_INC, -U=get_E_ENV
+
+    -o  --output|out=s   : output method 
                           -o y | -output=YAML
                           -o d | -output=Dumper   (Data::Dumper)
 
+    -Display             : The parameter given to post_respond is confirm.
+
     -h  --help
 
-  eg:
+@INC Operation
 
-    poikc -I
-    poikc -I ~/lib:./lib
-    poikc --inc_=delete ~/lib
-    poikc --inc_=reset
+	poikc  -I                     ( print Dumper \@INC )
+	poikc  -I ./t                 ( unshift @INC, './t' )
+	poikc --inc_=delete ./t       ( @INC = grep {$_ ne './t'} @INC )
+	poikc --inc_=reset
 
-   (pokikcd server stop)
-    poikc stop 
-    poikc -H localhost stop 
+pokikcd server stop  ( Please specify a host name.)
 
-    poikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args1 args2
+    poikc -H=hostname stop 
+
+eg:
+
     poikc -s=e -o=y alias my_method args1 args2
-
-    poikc -s=method_respond POEIKCdaemon::Utility get_VERSION
-    poikc -o d -s m POEIKCdaemon::Utility publish_IKC my_alias_name my_package_name
-    poikc -o d -s m POEIKCdaemon::Utility publish_IKC my_alias_name _list event_1 event_2 ..
+    poikc -U get_VERSION
+    poikc -o d -U publish_IKC my_alias_name my_package_name
+    poikc -o d -U publish_IKC my_alias_name _list event_1 event_2 ..
     poikc -s=function_respond LWP::Simple get http://search.cpan.org/~suzuki/
     poikc -s=eval_respond 'scalar `ps ux`'
-
 
 
 =head1 DESCRIPTION

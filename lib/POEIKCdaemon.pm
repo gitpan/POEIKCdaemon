@@ -2,7 +2,7 @@ package POEIKCdaemon;
 
 use strict;
 use v5.8.1;
-our $VERSION = '0.00_04';
+our $VERSION = '0.00_05';
 
 use warnings;
 use Data::Dumper;
@@ -38,7 +38,7 @@ sub init {
 	$self->pidu(POEIKCdaemon::Utility->_new);
 	$self->pidu->_init();
 	$self->pidu->DEBUG($DEBUG) if $DEBUG;
-	$self->pidu->inc(\%inc);
+	$self->pidu->inc->{org_inc}= \%inc;
 	$self->pidu->stay(module=>'POEIKCdaemon::Utility');
 
 	push @{$opt{Module}}, __PACKAGE__, 'POEIKCdaemon::Utility';
@@ -51,6 +51,9 @@ sub init {
 		POEIKCdaemon::Utility::_DEBUG_log(load_module=>$self->pidu->inc->{load});
 		POEIKCdaemon::Utility::_DEBUG_log(GetOptions=>\%opt);
 		POEIKCdaemon::Utility::_DEBUG_log('@INC'	=>\@INC);
+		no warnings 'redefine';
+		*POE::Component::IKC::Responder::DEBUG = sub { 1 };
+		*POE::Component::IKC::Responder::Object::DEBUG = sub { 1 };
 	}
 	return $self;
 }
@@ -77,7 +80,6 @@ sub spawn
 	);
 
 	POE::Session->create(
-	    heap => {},
 	    object_states => [ $self =>  Class::Inspector->methods(__PACKAGE__) ]
 	);
 
@@ -221,6 +223,8 @@ sub execute_respond {
 	my $kernel = $poe->kernel;
 	my $object = $poe->object;
 	my ( $from, $args, $rsvp , ) = @{$poe->args};
+
+
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($from, $args, $rsvp);
 
 	ref $args ne 'ARRAY' and

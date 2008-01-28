@@ -93,14 +93,15 @@ FORK: {
 			eval $v if defined $v;
 #			POEIKCdaemon::Utility::_DEBUG_log($seq_num,$c);
 			$e = eval $t->expected ;
-			$e = ref $e ? Dumper($e):$e;
-			$r = ref $r ? Dumper($r):$r;
+#			$e = ref $e ? Dumper($e):$e;
+#			$r = ref $r ? Dumper($r):$r;
 
 			for ($type) {
-				$_ eq 'isnt'	and isnt($r , $e, $name), last;
-				$_ eq 'is'		and is	($r , $e, $name), last;
-				$_ eq 'ok_r'	and ok	($r ,     $name), last;
-				$_ eq 'ok_e'	and ok	($e ,     $name), last;
+				$_ eq 'isnt'		and isnt		($r , $e, $name), last;
+				$_ eq 'is'			and is			($r , $e, $name), last;
+				$_ eq 'is_deeply'	and is_deeply	($r , $e, $name), last;
+				$_ eq 'ok_r'		and ok			($r ,     $name), last;
+				$_ eq 'ok_e'		and ok			($e ,     $name), last;
 			}
 			POEIKCdaemon::Utility::_DEBUG_log(
 				sprintf "[%2d] t=%s, n=%s, \ni=%s, \ne=%s, \nr=%s, \nc=%s, \nv=%s, \ncomment=%s",
@@ -121,7 +122,7 @@ __END__
 --- input: ['POEIKCdaemon::Utility' => 'get_VERSION']
 --- expected: $POEIKCdaemon::VERSION
 
-=== 2	is	@{$c->{INC}}=@INC	POEIKCdaemon::Utility=>get_A_INC
+=== 2	is_deeply	@{$c->{INC}}=@INC	POEIKCdaemon::Utility=>get_A_INC
 --- input: ['POEIKCdaemon::Utility' => 'get_A_INC']
 --- expected: \@INC
 
@@ -129,7 +130,7 @@ __END__
 --- input: ['POEIKCdaemon::Utility' => 'unshift_INC', './t']
 --- expected: \@INC
 
-=== 4	is		POEIKCdaemon::Utility=>get_A_INC	# 前回 $c のと $r 比較
+=== 4	is_deeply		POEIKCdaemon::Utility=>get_A_INC	# 前回 $c のと $r 比較
 --- input: ['POEIKCdaemon::Utility' => 'get_A_INC']
 --- expected: $c->{i1}
 
@@ -169,15 +170,15 @@ __END__
 
 
 
-=== 13	is	#	POEIKCdaemon::Utility=>delete_INC
+=== 13	is_deeply	#	POEIKCdaemon::Utility=>delete_INC
 --- input: ['POEIKCdaemon::Utility' => 'delete_INC', './t']
 --- expected: $c->{INC}
 
-=== 14	is	#	POEIKCdaemon::Utility=>unshift_INC	# lib qw(./t)
+=== 14	is_deeply	#	POEIKCdaemon::Utility=>unshift_INC	# lib qw(./t)
 --- input: ['POEIKCdaemon::Utility' => 'unshift_INC', './t']
 --- expected: $c->{i1}
 
-=== 15	is	#	POEIKCdaemon::Utility=>reset_INC
+=== 15	is_deeply	#	POEIKCdaemon::Utility=>reset_INC
 --- input: ['POEIKCdaemon::Utility' => 'reset_INC']
 --- expected: $c->{INC}
 

@@ -109,7 +109,7 @@ sub get_object_something {
 	return $poe->object->$something; # ikc_self_port alias;
 }
 
-### ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+### INC vvvvvvvvvvvvvvvvvvvvvvvvv
 
 sub unshift_INC {
 	my $self = shift;
@@ -138,11 +138,7 @@ sub delete_INC {
 	my ($poe, $rsvp, $from, $args) = (
 		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
 	my $path = shift @{$args{args}};
-	my @inc;
-	for (@INC) {
-		push @inc, $_ unless $path eq $_;
-	}
-	@INC = @inc;
+	@INC = grep {$_ ne $path} @INC;
 	return \@INC;
 }
 
@@ -186,7 +182,7 @@ sub reload {
 		no warnings;
 
 		for ( sort keys %INC ){
-			next if $self->inc->{$_} ;
+			next if $self->inc->{org_inc}->{$_} ;
 			next if $self->inc->{stay}->{$_};
 			push @deletelist, delete $INC{$_};
 		}
@@ -207,6 +203,8 @@ sub reload {
 	}
 }
 
+### IKC vvvvvvvvvvvvvvvvvvvvvvvvv
+
 sub publish_IKC {
 	my $self = shift;
 	my %args = @_;
@@ -224,6 +222,8 @@ sub publish_IKC {
 	return  if (not($alias) or not($event_ary));
 	return $poe->kernel->call(IKC =>publish => $alias, $event_ary) || $!;
 }
+
+### DEBUG vvvvvvvvvvvvvvvvvvvvvvvvv
 
 sub _DEBUG_log {
 	$DEBUG or return;
@@ -267,16 +267,22 @@ POEIKCdaemon::Utility - Utility for POEIKCdaemon
 The reload of the module.
 
 	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility'=> 'reload', 'MyClass']
-	);
+		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'] );
 	print Dumper $ret;
 
 The reload of the module and Method execution.
 
 	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method']
-	);
+		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method'] );
 	print Dumper $ret;
+
+The loaded module is confirm.
+
+	poikc -Utility=get_load
+	
+	# $ikc_client->post_respond( 'POEIKCd/method_respond' => ['POEIKCdaemon::Utility','get_load'] );
+
+
 
 =head1 DESCRIPTION
 

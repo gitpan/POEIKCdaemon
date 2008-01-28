@@ -2,7 +2,7 @@ package IKC_d_HTTP_client;
 
 use strict;
 use warnings;
-use Scalar::Util;
+#use Scalar::Util;
 use Data::Dumper;
 use Class::Inspector;
 use HTTP::Request::Common qw(GET);
