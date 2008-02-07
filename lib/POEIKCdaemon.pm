@@ -2,7 +2,7 @@ package POEIKCdaemon;
 
 use strict;
 use v5.8.1;
-our $VERSION = '0.00_05';
+our $VERSION = '0.00_06';
 
 use warnings;
 use Data::Dumper;
@@ -42,18 +42,18 @@ sub init {
 	$self->pidu->stay(module=>'POEIKCdaemon::Utility');
 
 	push @{$opt{Module}}, __PACKAGE__, 'POEIKCdaemon::Utility';
-	$self->pidu->inc->{load}->{$INC{Class::Inspector->filename($_)}} = time for @{$opt{Module}};
+	$self->pidu->inc->{load}->{ $_ } = [$INC{Class::Inspector->filename($_)},time] for @{$opt{Module}};
 
-	$0 = sprintf "poeikcd alias:%s port:%s",
+	$0 = sprintf "poeikcd --alias=%s --port=%s",
 				$self->alias, $self->ikc_self_port ;#if $0 =~ /poeikcd/;
 	if ($DEBUG) {
+		no warnings 'redefine';
+		*POE::Component::IKC::Responder::DEBUG = sub { 1 };
+		*POE::Component::IKC::Responder::Object::DEBUG = sub { 1 };
 		POEIKCdaemon::Utility::_DEBUG_log(VERSION	=>$VERSION);
 		POEIKCdaemon::Utility::_DEBUG_log(load_module=>$self->pidu->inc->{load});
 		POEIKCdaemon::Utility::_DEBUG_log(GetOptions=>\%opt);
 		POEIKCdaemon::Utility::_DEBUG_log('@INC'	=>\@INC);
-		no warnings 'redefine';
-		*POE::Component::IKC::Responder::DEBUG = sub { 1 };
-		*POE::Component::IKC::Responder::Object::DEBUG = sub { 1 };
 	}
 	return $self;
 }
@@ -99,18 +99,26 @@ sub _start {
 	
 	my $kernel = $poe->kernel;
 
-	$object->{start_time} = time;
+	$object->{start_time} = localtime;
 	$kernel->alias_set($object->alias);
 
 	# 終了処理 を登録
-	$kernel->sig( HUP  => '__stop' );
-	$kernel->sig( INT  => '__stop' );
-	$kernel->sig( TERM => '__stop' );
-	$kernel->sig( KILL => '__stop' );
+	$kernel->sig( HUP  => '_stop' );
+	$kernel->sig( INT  => '_stop' );
+	$kernel->sig( TERM => '_stop' );
+	$kernel->sig( KILL => '_stop' );
 
 	$kernel->call(
 		IKC =>
-			publish => $object->alias, Class::Inspector->methods(__PACKAGE__),
+			#publish => $object->alias, Class::Inspector->methods(__PACKAGE__),
+			publish => $object->alias, [qw/
+				_stop 
+				event_respond
+				execute_respond
+				function_respond
+				method_respond
+				something_respond
+			/],
 	);
 
 	if ($DEBUG) {
@@ -135,50 +143,48 @@ sub callback_unregister
 	POEIKCdaemon::Utility::_DEBUG_log(unregister=>$client);
 }
 
-sub _stop{
+sub _stop {
 	my $poe = sweet_args;
-	my $object = $poe->object;
 	$poe->kernel->stop();
-
-	printf "%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime);
-
-}
-
-sub __stop{
-	my $poe = sweet_args;
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log();
-	$poe->kernel->yield('_stop');
+	printf "%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime);
 }
 
-sub stop_respond{
-	my $poe = sweet_args;
-	my $kernel = $poe->kernel;
-	my ($request) = @{$poe->args};
-	my ($expr, $rsvp) = @{$request};
-	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($rsvp);
-	$poe->kernel->call( IKC => post => 
-		$rsvp, 
-		sprintf("%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime))
-		#[scalar(localtime), $$, $poe->object->ikc_self_port] 
-	);
-	$poe->kernel->yield('__stop');
-}
+#sub _stop_cushion {
+#	my $poe = sweet_args;
+#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log();
+#	$poe->kernel->yield('_stop');
+#}
 
-sub eval_respond {
-	my $poe = sweet_args;
-	my $kernel = $poe->kernel;
-	my ($request) = @{$poe->args};
-	my ($expr, $rsvp) = @{$request};
-	$expr = shift @{$expr} if ref $expr eq 'ARRAY';
+#sub stop_respond{
+#	my $poe = sweet_args;
+#	my $kernel = $poe->kernel;
+#	my ($request) = @{$poe->args};
+#	my ($expr, $rsvp) = @{$request};
+#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($rsvp);
+#	$poe->kernel->call( IKC => post => 
+#		$rsvp, 
+#		sprintf("%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime))
+#		#[scalar(localtime), $$, $poe->object->ikc_self_port] 
+#	);
+#	$poe->kernel->yield('__stop');
+#}
 
-	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($expr);
-
-	my @re = eval $expr;
-	my $re = @re == 1 ? shift @re : \@re;
-	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($re);
-	$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
-		 $kernel->post( IKC => post => $rsvp, $re );
-}
+#sub eval_respond {
+#	my $poe = sweet_args;
+#	my $kernel = $poe->kernel;
+#	my ($request) = @{$poe->args};
+#	my ($expr, $rsvp) = @{$request};
+#	$expr = shift @{$expr} if ref $expr eq 'ARRAY';
+#
+#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($expr);
+#
+#	my @re = eval $expr;
+#	my $re = @re == 1 ? shift @re : \@re;
+#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($re);
+#	$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
+#		 $kernel->post( IKC => post => $rsvp, $re );
+#}
 
 #sub code_respond {
 #	my $poe = sweet_args;
@@ -194,11 +200,88 @@ sub eval_respond {
 #		 $kernel->post( IKC => post => $rsvp, $re );
 #}
 
+#sub _loop_delay_respond {
+#	my $poe = sweet_args;
+#	my $kernel = $poe->kernel;
+#	my ($request) = @{$poe->args};
+#	my ($args, $rsvp) = @{$request};
+#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($request);
+#
+#	my ( $module, $method, $delay  ) = @{$args};
+#	my $state_name = join "_" => $module =~ /(\w+)/,$method;
+#
+#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($state_name);
+#
+#	$kernel->state( $state_name , sub {
+#		my $poe = sweet_args;
+#		my $kernel = $poe->kernel;
+#		$kernel->yield(execute_respond => 'function', [$module, $method]);
+#		$kernel->delay($state_name => $delay);
+#	} );
+#	$kernel->delay($state_name => $delay);
+#
+#	 $kernel->post( IKC => post => $rsvp, $state_name );
+#}
+
+
+sub something_respond {
+	my $poe = sweet_args;
+	my $kernel = $poe->kernel;
+	my $session = $poe->session;
+	my $object = $poe->object;
+	my ($request) = @{$poe->args};
+	my ($args, $rsvp) = @{$request};
+
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($request);
+
+	my @something = $object->pidu->_distinguish( poe=>$poe, args => $args );
+	@something ? 
+		$kernel->call($session, execute_respond => @something, $rsvp):
+
+#	my $something ;
+#	my ($module, $method);
+#	{
+#		$kernel->alias_list($args->[0]) and do {
+#			# event_respond
+#			$module = shift @{$args};
+#			$method = shift @{$args};
+#			$module or last; $method or last;
+#			#keys $self->pidu->inc->{load}
+#			unshift @{$args}, $module, $method;
+#			$kernel->call($session, execute_respond => 'event', $args, $rsvp);
+#			last;
+#		};
+#		$args->[0] =~ /->/ and do {
+#			# method_respond
+#			$module = $`;
+#			$method = $';
+#			$module or last; $method or last;
+#			shift @{$args};
+#			unshift @{$args}, $module, $method;
+#			$kernel->call($session, execute_respond => 'method', $args, $rsvp);
+#			last;
+#		};
+#		$args->[0] =~ /::(\w+)$/ and do {
+#			# function_respond
+#			$module = $`;
+#			$method = $1;
+#			$module or last; $method or last;
+#			shift @{$args};
+#			unshift @{$args}, $module, $method;
+#			$kernel->call($session, execute_respond => 'function', $args, $rsvp);
+#			last;
+#		};
+#	}
+	$kernel->post( IKC => post => $rsvp, {poeikcd_error=>
+		'It is not discriminable. '.
+		q{"ModuleName::functionName" or  "ClassName->methodName" or "AliasName eventName"} 
+	});
+}
+
 sub event_respond {
 	my $poe = sweet_args;
 	my $kernel = $poe->kernel;
 	my ($request) = @{$poe->args};
-
 	$kernel->yield(execute_respond => 'event', @{$request});
 }
 
@@ -206,7 +289,6 @@ sub method_respond {
 	my $poe = sweet_args;
 	my $kernel = $poe->kernel;
 	my ($request) = @{$poe->args};
-
 	$kernel->yield(execute_respond => 'method', @{$request});
 }
 
@@ -214,7 +296,6 @@ sub function_respond {
 	my $poe = sweet_args;
 	my $kernel = $poe->kernel;
 	my ($request) = @{$poe->args};
-
 	$kernel->yield(execute_respond => 'function', @{$request});
 }
 
@@ -236,9 +317,11 @@ sub execute_respond {
 
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(module => $module);
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(method => $method);
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(args => $args);
 
 	if($from !~ /^event/ and not $object->pidu->use(module=>$module)) {
-		return $kernel->call( IKC => post => $rsvp, {poeikcd_error=>$@} );
+
+			return $kernel->call( IKC => post => $rsvp, {poeikcd_error=>$@} );
 	}
 
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(from => $from);
@@ -252,7 +335,7 @@ sub execute_respond {
 				poe=>$poe, rsvp=>$rsvp, from=>$from, args=>$args
 			) : grep {not /^\_/ and not /^[A-Z]+$/} @{Class::Inspector->methods($module)};
 		};
-		my $re = @re == 1 ? shift @re : \@re;
+		my $re = @re == 1 ? shift @re : @re ? \@re : ();
 		if (not $rsvp->{responded}) {
 			$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
 				$kernel->post( IKC => post => $rsvp, $re );
@@ -263,26 +346,24 @@ sub execute_respond {
 		return;
 	}
 
-	my @re =$from =~ /^method/ 		? eval { $module->$method( @{$args} )} : 
-			$from =~ /^event/ 		? eval { 
-				local $! = undef;
-				$kernel->call( $module => $method, @{$args} )or return $!
-			} :
-			$from =~ /^function/ 	? eval { 
-				no strict 'refs';
-				my $code = *{"${module}::$method"};
-				$code->( @{$args} );
-			} : {poeikcd_error=>'method|function|event._respond'};
+	my @re = $object->pidu->execute(poe=>$poe, from=>$from, module=>$module, method=>$method, args=>$args);
+	my $e = $@ if $@;
 
+	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($e);
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(@re);
-	my $re = @re == 1 ? shift @re : \@re;
+	my $re = @re == 1 ? shift @re : @re ? \@re : ();
 
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($module, $method, $re);
 
-	return  $kernel->post( IKC => post => $rsvp, $re ) if $re;
+	if ($rsvp) {
+		return $e ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$e} ) :
+			    $kernel->post( IKC => post => $rsvp, $re );
 
-	return $@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
-		 $kernel->post( IKC => post => $rsvp, $re );
+		return  $kernel->post( IKC => post => $rsvp, $re ) if $re;
+	}else{
+		return @re ? @re : $re || ();
+	}
+
 }
 
 
@@ -305,102 +386,8 @@ L<poeikcd>
 And then 
 L<poikc> (POK IKC Client) 
 
+	poikc -H hostname [options] args...
 	poikc --help
-
-    poikc -H remote_hostname -p=47225 -a=POEIKCd -s=m -o=y MyClass my_method args1 args2
-
-    poikc -s=method_respond POEIKCdaemon::Utility get_VERSION
-    poikc -s m POEIKCdaemon::Utility get_A_INC -o d
-    poikc -s m POEIKCdaemon::Utility get_H_ENV -o y
-    poikc -s=function_respond LWP::Simple get http://search.cpan.org/~suzuki/
-    poikc -s=eval_respond 'scalar `ps ux`'
-
-or 
-use POE::Component::IKC::ClientLite
-
-	use POE::Component::IKC::ClientLite;
-	use Data::Dumper;
-
-	my $host = '127.0.0.1';
-	my $port = $ARGV[0] || 47225;
-
-	print scalar localtime,"\n";
-	printf "[ %s : %s ]\n", $host, $port;
-	my ($name) = $0 =~ /(\w+)\.\w+/;
-	$name .= $$;
-	my $ikc = create_ikc_client(
-		ip => $host,
-		port => $port,
-		name => $name,
-	);
-	my $ret;
-
-	$ikc or die sprintf "%s\n\n",$POE::Component::IKC::ClientLite::error;
-
-	# method_respond
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['Cwd' => 'getcwd']
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-
-	# function_respond
-	$ret = $ikc->post_respond('POEIKCd/function_respond' => 
-		['LWP::Simple' => 'get', 'http://search.cpan.org/~suzuki/']
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['MyClass' => 'my_method', 'args1', 'args2', 'args3 ..' ]
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-
-	# reload
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method']
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-
-	# stay , It is not reload.
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility' => 'stay', 'MyClass' ]
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-	print '* 'x20,"\n";
-
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility' => 'get_A_INC']
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-	print '* 'x20,"\n";
-
-	# @INC It can change. unshift @INC
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility' => 'unshift_INC', '~/lib'],
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-	print '* 'x20,"\n";
-
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-			['POEIKCdaemon::Utility' => 'reset_INC'],
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-	print '* 'x20,"\n";
-
-	# shutdown
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility' => 'stop']
-	);
-	$ikc->error and die($ikc->error);
-	print Dumper $ret;
-
 
 
 =head1 DESCRIPTION

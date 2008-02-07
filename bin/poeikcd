@@ -103,7 +103,7 @@ for ($command) {
 			printf "%s\n\n",$POE::Component::IKC::ClientLite::error; 
 			exit;
 		};
-		my $ret = $ikc->post_respond($options->{alias}.'/stop_respond');
+		my $ret = $ikc->post_respond($options->{alias}.'/method_respond' => ['POEIKCdaemon::Utility','stop'] );
 		$ikc->error and die($ikc->error);
 		printf $ret;
 		/restart/i ? do{$command='start';redo} : last;

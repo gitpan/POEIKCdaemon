@@ -29,10 +29,151 @@ sub _new {
 
 
 sub inc {shift->{inc}}
+sub state_list {shift->{state_list}}
 
 sub _init {
 	my $self = shift;
 	$self->{inc} = {};
+	$self->{state_list} = {};
+}
+
+
+
+sub shutdown {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my ($alias, $event_ary) = ($args{alias}, $args{event});
+
+	$poe->kernel->delay('_stop', 0.002);
+	return sprintf("%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime));
+}
+
+### Loop vvvvvvvvvvvvvvvvvvvvvvvvv
+
+sub relay {}
+sub chain {}
+
+# -U=loop #delay #limit  module::method , args ..);
+# -U=loop_stop   module::method );
+
+sub loop { 
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $kernel = $poe->kernel;
+	my $delay = 0.5;
+	my $limit = '';
+
+	$DEBUG and _DEBUG_log($args);
+
+	while (my ($n, $f) = $args->[0] =~ /^(\d+)(\w+)/) {
+		$DEBUG and _DEBUG_log('($n, $f)'=>"($n, $f)");
+		shift @{$args};
+		$delay  = $n if ($f =~ /^d/i);
+		$DEBUG and _DEBUG_log('($n, $f)'=>"($n, $f)");
+		$limit = $n if ($f =~ /^l/i);
+		$DEBUG and _DEBUG_log('($delay, $limit)'=>"($delay, $limit)");
+		$args->[0] or last;
+	}
+
+	$DEBUG and _DEBUG_log($args);
+
+	my $something = $args->[0] || return;
+	$DEBUG and _DEBUG_log($something);
+	$DEBUG and _DEBUG_log($args);
+
+	my $destination;
+	($destination, $args) = $self->_distinguish(poe=>$poe, args=>$args);
+	my $module = shift @{$args};
+	my $method = shift @{$args};
+
+	$self->use(module=>$module) or return $@;
+
+	my $event_name = join "_" => $module =~ /(\w+)/, $method, '_loop';
+	$DEBUG and _DEBUG_log($event_name);
+
+	if ($something) {
+		$self->state_list->{$something} = [$event_name, $delay, $limit, $destination, $module, $method ];
+		$kernel->state( $event_name , 
+			sub {
+					if ($limit and not $self->state_list->{$something}->[2]) {
+						$self->stop(poe=>$poe, something=>$something);
+						return;
+					}
+					$kernel->yield(execute_respond => $destination, [$module, $method, @{$args}]);
+					$kernel->delay($event_name => $delay);
+					$self->state_list->{$something}->[2]-- if ($limit);
+			}
+		);
+
+		$kernel->delay($event_name => $delay);
+		return $event_name;
+	}else{
+		return;
+	}
+}
+
+sub stop{
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $kernel = $poe->kernel;
+	my ($something, $method, @args) = @{$args} if ref $args eq 'ARRAY';
+	$something ||= $args{something};
+	$self->state_list->{$something} or return;
+	my $event_name = $self->state_list->{$something}->[0];
+	$DEBUG and _DEBUG_log( $event_name, $something);
+	$kernel->state( $event_name );
+
+	if ($method) {
+		my $destination = $self->state_list->{$something}->[3];
+		my $module = $self->state_list->{$something}->[4];
+		delete $self->state_list->{$something};
+		$DEBUG and _DEBUG_log($self->state_list->{$something}, $event_name, $something, $destination, $module, $method, @args);
+		$DEBUG and _DEBUG_log($destination, $module, $method, @args);
+		return $self->execute(poe=>$poe, from=>$destination, module=>$module, method=>$method, args=>\@args);
+	}
+	delete $self->state_list->{$something};
+	return $event_name;
+}
+
+### exec vvvvvvvvvvvvvvvvvvvvvvvvv
+
+sub execute {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my ($module, $method) = ( $args{module}, $args{method} );
+	my $kernel = $poe->kernel if $poe;
+	#_DEBUG_log(wantarray);
+	for ($from) {
+		/^method/	and return eval { 
+				$DEBUG and _DEBUG_log("$module->$method( @{$args} )");
+				$module->$method( @{$args} )
+				} ;
+		/^event/	and return eval { 
+				local $! = undef;
+				$DEBUG and _DEBUG_log("call( $module => $method, @{$args} )");
+				$kernel->call( $module => $method, @{$args} )or return $!
+				} ;
+		/^function/	and return eval { 
+				no strict 'refs';
+				my $code = "${module}::$method";
+				$DEBUG and _DEBUG_log("$code(@{$args})");
+				$code = *{$code};
+				$DEBUG and _DEBUG_log("defined($code)"=>defined(&$code));
+				$code->( @{$args} );
+				};
+	}
+	return {poeikcd_error=>
+				'It is not discriminable. '.
+				q{"ModuleName::functionName" or  "ClassName->methodName" or "AliasName eventName"} 
+			}
 }
 
 ### get vvvvvvvvvvvvvvvvvvvvvvvvv
@@ -106,7 +247,7 @@ sub get_object_something {
 	my %args = @_;
 	my $poe = $args{poe};
 	my ($something) = @{$args{args}};
-	return $poe->object->$something; # ikc_self_port alias;
+	return $poe->object->{$something}; # ikc_self_port alias;
 }
 
 ### INC vvvvvvvvvvvvvvvvvvvvvvvvv
@@ -150,7 +291,7 @@ sub use {
 	$module ||=  shift @{$args{args}} or return;
 	return Class::Inspector->loaded( $module ) ? 1 : do{
 		$module->use() or return ;
-		$self->inc->{load}->{$INC{Class::Inspector->filename($module)}} ||= time;
+		$self->inc->{load}->{ $module } = [$INC{Class::Inspector->filename($module)},time] ;
 		1;
 	}? 1 : ();
 }
@@ -194,14 +335,29 @@ sub reload {
 
 	if( @{$args} >= 1) {
 		unshift @{$args}, $module;
-		$DEBUG and _DEBUG_log( $rsvp, $args);
-		$poe->kernel->call($poe->session => execute_respond => $from, $args, $rsvp,  )
+		$DEBUG and _DEBUG_log($rsvp, $args);
+		$poe->kernel->call($poe->session => execute_respond => $from, $args, $rsvp )
 			or return $!;
 		$rsvp->{responded} = (caller(0))[3];
 	}else{
 		return \@deletelist;
 	}
 }
+
+### eval vvvvvvvvvvvvvvvvvvvvvvvvv
+
+sub eval {
+	my $self = shift;
+	my %args = @_;
+	my $args = $args{args};
+
+	my $expr = (ref $args eq 'ARRAY') ? shift @{$args} : $args;
+
+	$DEBUG and _DEBUG_log($expr);
+
+	return eval $expr || $@;
+}
+
 
 ### IKC vvvvvvvvvvvvvvvvvvvvvvvvv
 
@@ -221,6 +377,54 @@ sub publish_IKC {
 	$DEBUG and _DEBUG_log( $alias, $event_ary);
 	return  if (not($alias) or not($event_ary));
 	return $poe->kernel->call(IKC =>publish => $alias, $event_ary) || $!;
+}
+
+
+
+### 
+
+sub _distinguish {
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $kernel = $poe->kernel;
+
+	$DEBUG and _DEBUG_log($args);
+
+	my $something ;
+	my ($module, $method);
+	{
+		$kernel->alias_list($args->[0]) and do {
+			# event_respond
+			$module = shift @{$args};
+			$method = shift @{$args};
+			$module or last; $method or last;
+			#keys $self->pidu->inc->{load}
+			unshift @{$args}, $module, $method;
+			return ('event', $args);
+		};
+		$args->[0] =~ /->/ and do {
+			# method_respond
+			$module = $`;
+			$method = $';
+			$module or last; $method or last;
+			shift @{$args};
+			unshift @{$args}, $module, $method;
+			return ('method', $args);
+		};
+		$args->[0] =~ /::(\w+)$/ and do {
+			# function_respond
+			$module = $`;
+			$method = $1;
+			$module or last; $method or last;
+			shift @{$args};
+			unshift @{$args}, $module, $method;
+			return ('function', $args);
+		};
+	}
+	$DEBUG and _DEBUG_log();
+	return 
 }
 
 ### DEBUG vvvvvvvvvvvvvvvvvvvvvvvvv
@@ -264,25 +468,9 @@ POEIKCdaemon::Utility - Utility for POEIKCdaemon
 
 =head1 SYNOPSIS
 
-The reload of the module.
-
 	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'] );
+		['POEIKCdaemon::Utility'=> $method_name, $args ..] );
 	print Dumper $ret;
-
-The reload of the module and Method execution.
-
-	$ret = $ikc->post_respond('POEIKCd/method_respond' => 
-		['POEIKCdaemon::Utility'=> 'reload', 'MyClass'=> 'my_method'] );
-	print Dumper $ret;
-
-The loaded module is confirm.
-
-	poikc -Utility=get_load
-	
-	# $ikc_client->post_respond( 'POEIKCd/method_respond' => ['POEIKCdaemon::Utility','get_load'] );
-
-
 
 =head1 DESCRIPTION
 

@@ -24,5 +24,6 @@ README
 t/00_compile.t
 t/01_POEIKCdaemon.t
 t/08_IKC_d_HTTP_client.t
+t/Demo/Demo.pm
 t/IKC_d_HTTP_client.pm
 t/IKC_d_Localtime.pm

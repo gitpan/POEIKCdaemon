@@ -128,7 +128,10 @@ FORK: {
 			$type eq 'pass'	and pass;
 		};
 
-		$ikc->post_respond($options->{alias}.'/stop_respond' );
+		# 'POEIKCd/method_respond' => ['POEIKCdaemon::Utility','stop','POEIKCdaemon::Utility','stop'] 
+		$ikc->post_respond($options->{alias}.'/method_respond', 
+			['POEIKCdaemon::Utility','shutdown']
+		);
 		$ikc->error and die($ikc->error);
 
     #wait;
