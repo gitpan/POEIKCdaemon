@@ -2,7 +2,7 @@ package POEIKCdaemon;
 
 use strict;
 use v5.8.1;
-our $VERSION = '0.00_06';
+our $VERSION = '0.00_07';
 
 use warnings;
 use Data::Dumper;
@@ -150,80 +150,6 @@ sub _stop {
 	printf "%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime);
 }
 
-#sub _stop_cushion {
-#	my $poe = sweet_args;
-#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log();
-#	$poe->kernel->yield('_stop');
-#}
-
-#sub stop_respond{
-#	my $poe = sweet_args;
-#	my $kernel = $poe->kernel;
-#	my ($request) = @{$poe->args};
-#	my ($expr, $rsvp) = @{$request};
-#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($rsvp);
-#	$poe->kernel->call( IKC => post => 
-#		$rsvp, 
-#		sprintf("%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime))
-#		#[scalar(localtime), $$, $poe->object->ikc_self_port] 
-#	);
-#	$poe->kernel->yield('__stop');
-#}
-
-#sub eval_respond {
-#	my $poe = sweet_args;
-#	my $kernel = $poe->kernel;
-#	my ($request) = @{$poe->args};
-#	my ($expr, $rsvp) = @{$request};
-#	$expr = shift @{$expr} if ref $expr eq 'ARRAY';
-#
-#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($expr);
-#
-#	my @re = eval $expr;
-#	my $re = @re == 1 ? shift @re : \@re;
-#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($re);
-#	$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
-#		 $kernel->post( IKC => post => $rsvp, $re );
-#}
-
-#sub code_respond {
-#	my $poe = sweet_args;
-#	my $kernel = $poe->kernel;
-#	my ($request) = @{$poe->args};
-#	my ($expr, $rsvp) = @{$request};
-#	$expr = shift @{$expr} if ref $expr eq 'ARRAY';
-#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($expr);
-#	my @re = eval {no strict 'refs'; eval($expr)->()};
-#	my $re = @re == 1 ? shift @re : \@re;
-##	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($re);
-#	$@ ? $kernel->post( IKC => post => $rsvp, {poeikcd_error=>$@} ) :
-#		 $kernel->post( IKC => post => $rsvp, $re );
-#}
-
-#sub _loop_delay_respond {
-#	my $poe = sweet_args;
-#	my $kernel = $poe->kernel;
-#	my ($request) = @{$poe->args};
-#	my ($args, $rsvp) = @{$request};
-#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($request);
-#
-#	my ( $module, $method, $delay  ) = @{$args};
-#	my $state_name = join "_" => $module =~ /(\w+)/,$method;
-#
-#	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($state_name);
-#
-#	$kernel->state( $state_name , sub {
-#		my $poe = sweet_args;
-#		my $kernel = $poe->kernel;
-#		$kernel->yield(execute_respond => 'function', [$module, $method]);
-#		$kernel->delay($state_name => $delay);
-#	} );
-#	$kernel->delay($state_name => $delay);
-#
-#	 $kernel->post( IKC => post => $rsvp, $state_name );
-#}
-
-
 sub something_respond {
 	my $poe = sweet_args;
 	my $kernel = $poe->kernel;
@@ -238,40 +164,6 @@ sub something_respond {
 	@something ? 
 		$kernel->call($session, execute_respond => @something, $rsvp):
 
-#	my $something ;
-#	my ($module, $method);
-#	{
-#		$kernel->alias_list($args->[0]) and do {
-#			# event_respond
-#			$module = shift @{$args};
-#			$method = shift @{$args};
-#			$module or last; $method or last;
-#			#keys $self->pidu->inc->{load}
-#			unshift @{$args}, $module, $method;
-#			$kernel->call($session, execute_respond => 'event', $args, $rsvp);
-#			last;
-#		};
-#		$args->[0] =~ /->/ and do {
-#			# method_respond
-#			$module = $`;
-#			$method = $';
-#			$module or last; $method or last;
-#			shift @{$args};
-#			unshift @{$args}, $module, $method;
-#			$kernel->call($session, execute_respond => 'method', $args, $rsvp);
-#			last;
-#		};
-#		$args->[0] =~ /::(\w+)$/ and do {
-#			# function_respond
-#			$module = $`;
-#			$method = $1;
-#			$module or last; $method or last;
-#			shift @{$args};
-#			unshift @{$args}, $module, $method;
-#			$kernel->call($session, execute_respond => 'function', $args, $rsvp);
-#			last;
-#		};
-#	}
 	$kernel->post( IKC => post => $rsvp, {poeikcd_error=>
 		'It is not discriminable. '.
 		q{"ModuleName::functionName" or  "ClassName->methodName" or "AliasName eventName"} 
@@ -329,7 +221,6 @@ sub execute_respond {
 	if ($module eq 'POEIKCdaemon::Utility'){
 		$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($rsvp);
 		my @re = eval {
-			#my $module = shift @{$args} if ref $args eq 'ARRAY';
 			$method ? 
 			$object->pidu->$method(
 				poe=>$poe, rsvp=>$rsvp, from=>$from, args=>$args

@@ -1,11 +1,23 @@
 Revision history for Perl extension POEIKCdaemon
 
+0.00_06  Thu Feb 12 2008
+       - POEIKCdaemon::Utility : alteration loop.
+            eg)
+               # A loop is carried out 30 times.
+               poikc -D -U loop  30  Demo::Demo::loop_test Start_Loop aaa bbb
+               # Carrying out a loop is continued.
+               poikc -D -U loop  Demo::Demo::loop_test Start_Loop aaa bbb
+               poikc -D -U stop  Demo::Demo::loop_test end_loop End_loop 1111 2222
+       - POEIKCdaemon::Utility : Added relay method .
+            eg)
+               poikc -D -U relay Demo::Demo::relay_start Start_relay aaa bbb
+
 0.00_06  Thu Feb 7 2008
        - poikc : omitted the --state_name option and was able to appoint it.
             eg)
                function
                   poikc ModuleName::functionName  args...
-               ClassName method
+               Class method
                   poikc "ClassName->methodName"  args...
                POE event
                   poikc  AliasName eventName  args...

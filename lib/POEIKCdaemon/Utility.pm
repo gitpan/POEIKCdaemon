@@ -52,7 +52,58 @@ sub shutdown {
 
 ### Loop vvvvvvvvvvvvvvvvvvvvvvvvv
 
-sub relay {}
+sub relay #{}
+{
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $kernel = $poe->kernel;
+
+	$DEBUG and _DEBUG_log($args);
+
+	my $something = $args->[0] || return;
+
+	my $destination;
+	($destination, $args) = $self->_distinguish(poe=>$poe, args=>$args);
+	my $module = shift @{$args};
+	my $method = $args->[0];
+
+	$self->use(module=>$module) or return $@;
+
+	my $event_name = join "_" => $module =~ /(\w+)/, $method, 'relay';
+
+	$DEBUG and _DEBUG_log($event_name, $something);
+
+	if ($something) {
+		$self->state_list->{$something} = {
+			event_name=>$event_name,
+			next_mthod=>'',
+			destination=>[$destination, $module, $method],
+		};
+		$kernel->state( $event_name , sub {
+				my @args = @_[POE::Session::ARG0() ..$#_];
+				$DEBUG and _DEBUG_log(\@args);
+				my $method = shift @args;
+				$DEBUG and _DEBUG_log( from=>$destination, module=>$module, method=>$method, args=>\@args);
+				my @re_args = $self->execute(poe=>$poe, from=>$destination, module=>$module, method=>$method, args=>\@args);
+				$DEBUG and _DEBUG_log(@re_args);
+				my $next_mthod = $re_args[0] if (
+						$re_args[0] and 
+						not(ref $re_args[0]) and 
+						$re_args[0] =~ /^\w+/
+					);
+				($next_mthod) ? $kernel->yield($event_name, @re_args ) : 
+					$self->stop(poe=>$poe, something=>$something,);
+			}
+		);
+		$kernel->yield($event_name => @{$args});
+		return $event_name;
+	}else{
+		return;
+	}
+
+}
 sub chain {}
 
 # -U=loop #delay #limit  module::method , args ..);
@@ -64,22 +115,10 @@ sub loop {
 	my ($poe, $rsvp, $from, $args) = (
 		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
 	my $kernel = $poe->kernel;
-	my $delay = 0.5;
-	my $limit = '';
 
 	$DEBUG and _DEBUG_log($args);
 
-	while (my ($n, $f) = $args->[0] =~ /^(\d+)(\w+)/) {
-		$DEBUG and _DEBUG_log('($n, $f)'=>"($n, $f)");
-		shift @{$args};
-		$delay  = $n if ($f =~ /^d/i);
-		$DEBUG and _DEBUG_log('($n, $f)'=>"($n, $f)");
-		$limit = $n if ($f =~ /^l/i);
-		$DEBUG and _DEBUG_log('($delay, $limit)'=>"($delay, $limit)");
-		$args->[0] or last;
-	}
-
-	$DEBUG and _DEBUG_log($args);
+	my $limit = shift @{$args} if ($args->[0] and $args->[0] =~ /^\d+$/);
 
 	my $something = $args->[0] || return;
 	$DEBUG and _DEBUG_log($something);
@@ -92,24 +131,34 @@ sub loop {
 
 	$self->use(module=>$module) or return $@;
 
-	my $event_name = join "_" => $module =~ /(\w+)/, $method, '_loop';
+	my $event_name = join "_" => $module =~ /(\w+)/, $method, 'loop';
 	$DEBUG and _DEBUG_log($event_name);
 
 	if ($something) {
-		$self->state_list->{$something} = [$event_name, $delay, $limit, $destination, $module, $method ];
-		$kernel->state( $event_name , 
-			sub {
-					if ($limit and not $self->state_list->{$something}->[2]) {
-						$self->stop(poe=>$poe, something=>$something);
-						return;
-					}
-					$kernel->yield(execute_respond => $destination, [$module, $method, @{$args}]);
-					$kernel->delay($event_name => $delay);
-					$self->state_list->{$something}->[2]-- if ($limit);
+		$self->state_list->{$something} = {
+			event_name	=>$event_name,
+			next_mthod	=>'',
+			limit	=>$limit,
+			destination	=>$destination, 
+			module	=>$module,
+			method	=>$method,
+		};
+		$kernel->state( $event_name , sub {
+				my @args = @_[POE::Session::ARG0() ..$#_];
+				$DEBUG and _DEBUG_log(@args);
+				if ($limit and not $self->state_list->{$something}->{limit}) {
+					$self->stop(poe=>$poe, something=>$something, );
+					return;
+				}
+				my @re_args = $self->execute(
+					poe=>$poe, from=>$destination, module=>$module, method=>$method, args=>\@args
+				);
+				$kernel->yield($event_name, @re_args);
+				## $kernel->delay($event_name => 0.05, @re_args);
+				$self->state_list->{$something}->{limit}-- if ($limit);
 			}
 		);
-
-		$kernel->delay($event_name => $delay);
+		$kernel->yield($event_name, @{$args});
 		return $event_name;
 	}else{
 		return;
@@ -124,21 +173,23 @@ sub stop{
 	my $kernel = $poe->kernel;
 	my ($something, $method, @args) = @{$args} if ref $args eq 'ARRAY';
 	$something ||= $args{something};
-	$self->state_list->{$something} or return;
-	my $event_name = $self->state_list->{$something}->[0];
-	$DEBUG and _DEBUG_log( $event_name, $something);
-	$kernel->state( $event_name );
 
-	if ($method) {
-		my $destination = $self->state_list->{$something}->[3];
-		my $module = $self->state_list->{$something}->[4];
+	$self->state_list->{$something} or return;
+
+	if (ref $self->state_list->{$something} eq 'HASH') {
+		my $event_name = $self->state_list->{$something}->{event_name};
+		$DEBUG and _DEBUG_log( $event_name, $something);
+		$kernel->state( $event_name );
+		if ($method) {
+			my $destination = $self->state_list->{$something}->{destination};
+			my $module = $self->state_list->{$something}->{module};
+			$DEBUG and _DEBUG_log($self->state_list->{$something}, $event_name, $something, $destination, $module, $method, @args);
+			$DEBUG and _DEBUG_log($destination, $module, $method, @args);
+			return $self->execute(poe=>$poe, from=>$destination, module=>$module, method=>$method, args=>\@args);
+		}
 		delete $self->state_list->{$something};
-		$DEBUG and _DEBUG_log($self->state_list->{$something}, $event_name, $something, $destination, $module, $method, @args);
-		$DEBUG and _DEBUG_log($destination, $module, $method, @args);
-		return $self->execute(poe=>$poe, from=>$destination, module=>$module, method=>$method, args=>\@args);
+		return $event_name;
 	}
-	delete $self->state_list->{$something};
-	return $event_name;
 }
 
 ### exec vvvvvvvvvvvvvvvvvvvvvvvvv
@@ -164,9 +215,10 @@ sub execute {
 		/^function/	and return eval { 
 				no strict 'refs';
 				my $code = "${module}::$method";
+				$DEBUG and _DEBUG_log($code);
 				$DEBUG and _DEBUG_log("$code(@{$args})");
 				$code = *{$code};
-				$DEBUG and _DEBUG_log("defined($code)"=>defined(&$code));
+				$DEBUG and _DEBUG_log("defined($code) ?=>"=>defined(&$code));
 				$code->( @{$args} );
 				};
 	}

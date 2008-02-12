@@ -4,6 +4,7 @@ Changes
 eg/client_lite.pl
 eg/client_lite_eg.pl
 eg/t-IKC_d_HTTP_client.sh
+eg/t-loop_relay.sh
 inc/Module/Install.pm
 inc/Module/Install/Base.pm
 inc/Module/Install/Can.pm

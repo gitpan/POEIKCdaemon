@@ -283,6 +283,21 @@ eg:
     poikc -o=d -U=publish_IKC my_alias_name my_package_name
     poikc -o=d -U=publish_IKC my_alias_name _list event_1 event_2 ..
 
+    loop
+       # A loop is carried out 30 times.
+       poikc -D -U loop  30  Module::method args ..
+       # Carrying out a loop is continued.
+       poikc -D -U loop  Module::method args ..
+       poikc -D -U stop  Module::method args ..
+       poikc -D -U stop  Module::method end_method args ..
+    relay
+       poikc -D -U relay MyModule::relay_start args ..
+        
+        package MyModule;
+        sub relay_start { my @args = @_; '# Some processings'; return 'relay_1', @args1}
+        sub relay_1 { my @args1 = @_; '# Some processings'; return 'relay_2', @args2;}
+        sub relay_2 { my @args2 = @_; ... }
+
 =head1 DESCRIPTION
 
 poikc is POE IKC (L<poeikcd>) Client 
