@@ -50,7 +50,7 @@ sub shutdown {
 	return sprintf("%s PID:%s ... stopped!! (%s)\n", $0, $$, scalar(localtime));
 }
 
-### Loop vvvvvvvvvvvvvvvvvvvvvvvvv
+### loop, relay, chain vvvvvvvvvvvvvvvvvvvvvvvvv
 
 sub relay #{}
 {
@@ -88,13 +88,14 @@ sub relay #{}
 				$DEBUG and _DEBUG_log( from=>$destination, module=>$module, method=>$method, args=>\@args);
 				my @re_args = $self->execute(poe=>$poe, from=>$destination, module=>$module, method=>$method, args=>\@args);
 				$DEBUG and _DEBUG_log(@re_args);
-				my $next_mthod = $re_args[0] if (
-						$re_args[0] and 
-						not(ref $re_args[0]) and 
-						$re_args[0] =~ /^\w+/
-					);
-				($next_mthod) ? $kernel->yield($event_name, @re_args ) : 
-					$self->stop(poe=>$poe, something=>$something,);
+				my $delay = shift @re_args if ($re_args[0] and not(ref $re_args[0]) and $re_args[0] =~ /^\d+$/);
+				my $next_mthod = $re_args[0] if ($re_args[0] and not(ref $re_args[0]) and $re_args[0] =~ /^\w+/);
+				
+				(not $next_mthod) ? 
+					$self->stop(poe=>$poe, something=>$something,) : 
+				$delay ? 
+					$kernel->delay($event_name => $delay, @re_args ) : 
+					$kernel->yield($event_name, @re_args ) ;
 			}
 		);
 		$kernel->yield($event_name => @{$args});
@@ -102,9 +103,59 @@ sub relay #{}
 	}else{
 		return;
 	}
-
 }
-sub chain {}
+
+sub chain #{}
+{
+	my $self = shift;
+	my %args = @_;
+	my ($poe, $rsvp, $from, $args) = (
+		$args{poe}, $args{rsvp}, $args{from}, $args{args} );
+	my $kernel = $poe->kernel;
+
+	$DEBUG and _DEBUG_log($args);
+
+	my $something = $args->[0] || return;
+
+	my $destination;
+	($destination, $args) = $self->_distinguish(poe=>$poe, args=>$args);
+	my $module = shift @{$args};
+	my $method = shift @{$args};
+	my @next_mthod = split /,/ => shift @{$args};
+	unshift @next_mthod , $method;
+
+	$self->use(module=>$module) or return $@;
+
+	my $event_name = join "_" => $module =~ /(\w+)/, $method, 'relay';
+
+	$DEBUG and _DEBUG_log($event_name, $something);
+
+	if ($something) {
+		$self->state_list->{$something} = {
+			event_name=>$event_name,
+			next_mthod=>\@next_mthod,
+			pointer=>0,
+			destination=>[$destination, $module, $method],
+		};
+		$kernel->state( $event_name , sub {
+				my @args = @_[POE::Session::ARG0() ..$#_];
+				$DEBUG and _DEBUG_log(\@args);
+				my $pointer = $self->state_list->{$something}->{pointer};
+				my $method = $self->state_list->{$something}->{next_mthod}->[$pointer];
+				my @re_args = $self->execute(poe=>$poe, from=>$destination, module=>$module, method=>$method, args=>\@args);
+				$self->state_list->{$something}->{pointer}++;
+				($pointer >= $#{$self->state_list->{$something}->{next_mthod}}) 
+					?
+					$self->stop(poe=>$poe, something=>$something,) : 
+					$kernel->yield($event_name, @re_args ) ;
+			}
+		);
+		$kernel->yield($event_name => @{$args});
+		return $event_name;
+	}else{
+		return;
+	}
+}
 
 # -U=loop #delay #limit  module::method , args ..);
 # -U=loop_stop   module::method );
@@ -370,18 +421,14 @@ sub reload {
 
 	my @deletelist;
 
-	if (not $self->inc->{stay}->{$module}) {
-
+	if (not $self->inc->{stay}->{$module} and $module ne __PACKAGE__) {
 		no warnings;
-
 		for ( sort keys %INC ){
 			next if $self->inc->{org_inc}->{$_} ;
 			next if $self->inc->{stay}->{$_};
 			push @deletelist, delete $INC{$_};
 		}
-
 		{no strict 'refs';%{"${module}::"}=();}
-		
 		delete $self->inc->{load}->{$INC{Class::Inspector->filename($module)}};
 	}
 
@@ -509,6 +556,24 @@ sub _DEBUG_log {
 	);
 }
 
+sub _log_header {
+	Date::Calc->use or return;
+	my ($pack, $file, $line, $subroutine) = caller(0);
+	my $levels_up = 0 ;
+	($pack, $file, $line, ) = caller($levels_up);
+	$levels_up++;
+	(undef, undef, undef, $subroutine, ) = caller($levels_up);
+	{
+		(undef, undef, undef, $subroutine, ) = caller($levels_up);
+		if(defined $subroutine and $subroutine eq "(eval)") {
+		    $levels_up++;
+		    redo;
+		}
+		$subroutine = "main::" unless $subroutine;
+	}
+	return sprintf "[DEBUG %04d/%02d/%02d %02d:%02d:%02d %s %d %s %d %s] - ",
+			Date::Calc::Today_and_Now() , $ENV{HOSTNAME}, $$, $file, $line, $subroutine;
+}
 
 1;
 

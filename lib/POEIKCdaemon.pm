@@ -2,7 +2,7 @@ package POEIKCdaemon;
 
 use strict;
 use v5.8.1;
-our $VERSION = '0.00_07';
+our $VERSION = '0.00_08';
 
 use warnings;
 use Data::Dumper;
@@ -39,7 +39,7 @@ sub init {
 	$self->pidu->_init();
 	$self->pidu->DEBUG($DEBUG) if $DEBUG;
 	$self->pidu->inc->{org_inc}= \%inc;
-	$self->pidu->stay(module=>'POEIKCdaemon::Utility');
+	#$self->pidu->stay(module=>'POEIKCdaemon::Utility');
 
 	push @{$opt{Module}}, __PACKAGE__, 'POEIKCdaemon::Utility';
 	$self->pidu->inc->{load}->{ $_ } = [$INC{Class::Inspector->filename($_)},time] for @{$opt{Module}};
@@ -219,7 +219,7 @@ sub execute_respond {
 	$DEBUG and POEIKCdaemon::Utility::_DEBUG_log(from => $from);
 
 	if ($module eq 'POEIKCdaemon::Utility'){
-		$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($rsvp);
+		#$DEBUG and POEIKCdaemon::Utility::_DEBUG_log($rsvp);
 		my @re = eval {
 			$method ? 
 			$object->pidu->$method(

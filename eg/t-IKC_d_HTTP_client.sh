@@ -15,8 +15,8 @@ date;
 
 
 ### (Direct access)
-./bin/poikc -o d -s m -D POEIKCdaemon::Utility publish_IKC IKC_d_HTTP IKC_d_HTTP_client
-./bin/poikc -o d -a=IKC_d_HTTP -s=enqueue_respond http://search.cpan.org/~suzuki/
+./bin/poikc -D -o d -s m -D POEIKCdaemon::Utility publish_IKC IKC_d_HTTP IKC_d_HTTP_client
+./bin/poikc -D -o d -a=IKC_d_HTTP -s=enqueue_respond http://search.cpan.org/~suzuki/
 echo "********************************************************************";
 sleep 1;
 date;

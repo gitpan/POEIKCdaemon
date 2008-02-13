@@ -5,6 +5,8 @@ use Cwd;
 our $time; 
 our $cut;
 
+local $|=1;
+
 sub demo {
 	return join "\t"=>__PACKAGE__,__LINE__,'(',@_,')',scalar(localtime),caller;
 }
@@ -16,7 +18,7 @@ sub loop_test {
 	sleep 0.5;
 	$cut++;
 	$time =  scalar(localtime) . ' cut='. $cut;
-	my $str = join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller;
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
 	`echo "***" >> $path`;
 	`date >> $path`;
 	`echo "$str" >> $path`;
@@ -29,9 +31,6 @@ sub get_time {
 
 
 sub end_loop {
-	print join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller(1),caller(0);
-	warn join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller(1),caller(0);
-	die join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller(1),caller(0);
 	my $dir = getcwd;
 	my $path = $dir. '/test-poeikcd.txt';
 	warn unlink $path;
@@ -50,7 +49,7 @@ sub relay_start {
 	my $path = $dir. '/test-poeikcd.txt';
 	$cut++;
 	$time =  scalar(localtime) . ' cut='. $cut;
-	my $str = join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller(1),caller(0);
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
 	`echo "***" >> $path`;
 	`date >> $path`;
 	`echo "$str" >> $path`;
@@ -64,7 +63,7 @@ sub relay_1 {
 	my $path = $dir. '/test-poeikcd.txt';
 	$cut++;
 	$time =  scalar(localtime) . ' cut='. $cut;
-	my $str = join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller(1),caller(0);
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
 	`echo "***" >> $path`;
 	`date >> $path`;
 	`echo "$str" >> $path`;
@@ -78,11 +77,11 @@ sub relay_2 {
 	my $path = $dir. '/test-poeikcd.txt';
 	$cut++;
 	$time =  scalar(localtime) . ' cut='. $cut;
-	my $str = join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller(1),caller(0);
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
 	`echo "***" >> $path`;
 	`date >> $path`;
 	`echo "$str" >> $path`;
-	$cut > 20 ? ('relay_stop', __LINE__,@_) : ('relay_1', __LINE__,@_);
+	$cut > 20 ? ('relay_stop', __LINE__,@_) : (3,'relay_1', __LINE__,@_);
 	#return 'relay_stop', __LINE__,@_;
 }
 
@@ -92,7 +91,7 @@ sub relay_stop {
 	my $path = $dir. '/test-poeikcd.txt';
 	$cut++;
 	$time =  scalar(localtime) . ' cut='. $cut;
-	my $str = join "\t"=>$cut,__PACKAGE__,__LINE__,'(',@_,')',$$,scalar(localtime),caller(1),caller(0);
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
 	`echo "***" >> $path`;
 	`date >> $path`;
 	`echo "$str" >> $path`;
@@ -103,6 +102,60 @@ sub relay_stop {
 
 	return ;
 }
+
+#use POEIKCdaemon::Utility;
+sub chain_start {
+	sleep 0.5;
+	my $dir = getcwd;
+	my $path = $dir. '/test-poeikcd.txt';
+	$cut++;
+	$time =  scalar(localtime) . ' cut='. $cut;
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
+	`echo "***" >> $path`;
+	`date >> $path`;
+	`echo "$str" >> $path`;
+	return __LINE__,@_;
+}
+
+sub chain_1 {
+	sleep 0.5;
+	my $dir = getcwd;
+	my $path = $dir. '/test-poeikcd.txt';
+	$cut++;
+	$time =  scalar(localtime) . ' cut='. $cut;
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
+	`echo "***" >> $path`;
+	`date >> $path`;
+	`echo "$str" >> $path`;
+	return __LINE__,@_;
+}
+
+sub chain_2 {
+	sleep 0.5;
+	my $dir = getcwd;
+	my $path = $dir. '/test-poeikcd.txt';
+	$cut++;
+	$time =  scalar(localtime) . ' cut='. $cut;
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
+	`echo "***" >> $path`;
+	`date >> $path`;
+	`echo "$str" >> $path`;
+	return __LINE__,@_;
+}
+
+sub chain_3 {
+	sleep 0.5;
+	my $dir = getcwd;
+	my $path = $dir. '/test-poeikcd.txt';
+	$cut++;
+	$time =  scalar(localtime) . ' cut='. $cut;
+	my $str = POEIKCdaemon::Utility::_log_header. join "\t"=>$cut,'(',@_,')', caller(1);
+	`echo "***" >> $path`;
+	`date >> $path`;
+	`echo "$str" >> $path`;
+	return __LINE__,@_;
+}
+
 
 1;
 

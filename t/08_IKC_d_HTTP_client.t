@@ -1,5 +1,8 @@
 use Test::Base;
 use strict;
+use lib qw(t);
+eval q{ use IKC_d_HTTP_client };
+plan skip_all => "IKC_d_HTTP_client is not installed." if $@;
 
 BEGIN {
 eval q{ use Net::Config qw(%NetConfig) };
@@ -98,20 +101,21 @@ FORK: {
 		my $c;
 		run {
 			my $t = shift;
-			my ($no, $type, $v, $name, $comment) = split /\t/, $t->name ;
+			my ($no, $type, $state, $name, $comment) = split /\t/, $t->name ;
 			
 			my $i = $t->input ;
 			my $e;
 			my $seq_num = $t->seq_num ;
 
 			$r = $ikc->post_respond(
-				$options->{alias}.'/method_respond' => eval $i);
+				$state => eval $i) if $type ne 'pass';
 				$ikc->error and die($ikc->error);
 			
 #			POEIKCdaemon::Utility::_DEBUG_log($seq_num,$c);
-			eval $v if defined $v;
+			eval $state if defined $state and $type eq 'pass';
+
 #			POEIKCdaemon::Utility::_DEBUG_log($seq_num,$c);
-			$e = eval $t->expected ;
+			$e = $type ne 'like' ? eval $t->expected : $t->expected;
 			$e = ref $e ? Dumper($e):$e;
 			$r = ref $r ? Dumper($r):$r;
 
@@ -120,12 +124,13 @@ FORK: {
 				$_ eq 'is'		and is	($r , $e, $name), last;
 				$_ eq 'ok_r'	and ok	($r ,     $name), last;
 				$_ eq 'ok_e'	and ok	($e ,     $name), last;
+				$_ eq 'like'	and like($r , qr/$e/, $name ), last; # ."\t like($r, qr/$e/)"
 			}
-			POEIKCdaemon::Utility::_DEBUG_log(
-				sprintf "[%2d] t=%s, n=%s, \ni=%s, \ne=%s, \nr=%s, \nc=%s, \nv=%s, \ncomment=%s",
-				$seq_num, $type, $name, ($i||"`'"), ($e||"`'"), ($r||"`'"), (Dumper($c||"`'")), $v||"`'", $comment||"`'",
-			);
-			$type eq 'pass'	and pass;
+#			POEIKCdaemon::Utility::_DEBUG_log(
+#				sprintf "[%2d] t=%s, n=%s, \ni=%s, \ne=%s, \nr=%s, \nc=%s, \nv=%s, \ncomment=%s",
+#				$seq_num, $type, $name, ($i||"`'"), ($e||"`'"), ($r||"`'"), (Dumper($c||"`'")), $v||"`'", $comment||"`'",
+#			);
+			$type eq 'pass'	and pass('...');
 		};
 
 		# 'POEIKCd/method_respond' => ['POEIKCdaemon::Utility','stop','POEIKCdaemon::Utility','stop'] 
@@ -139,7 +144,38 @@ FORK: {
 
 __END__
 
-=== 1	is	#	POEIKCdaemon::Utility=>get_VERSION
+=== 1	is	POEIKCd/method_respond	POEIKCdaemon::Utility=>get_VERSION
 --- input: ['POEIKCdaemon::Utility' => 'get_VERSION']
 --- expected: $POEIKCdaemon::VERSION
 
+=== 2	like	POEIKCd/method_respond	'IKC_d_HTTP_client' => 'spawn'
+--- input: ['IKC_d_HTTP_client' => 'spawn']
+--- expected: ^\d+$
+
+=== 3	is	POEIKCd/event_respond	'IKC_d_HTTP','enqueue','http://search.cpan.org/~suzuki/'
+--- input: ['IKC_d_HTTP','enqueue','http://search.cpan.org/~suzuki/']
+--- expected: 1
+
+=== 4	pass	sleep(1)	sleep
+--- input: ['POEIKCdaemon::Utility' => 'get_VERSION']
+--- expected: 1
+
+=== 5	like	POEIKCd/event_respond	'POEIKCd/event_respond' => ['IKC_d_HTTP','dequeue']
+--- input: ['IKC_d_HTTP','dequeue']
+--- expected: html
+
+=== 6	is	POEIKCd/method_respond	'POEIKCd/method_respond' => ['POEIKCdaemon::Utility','publish_IKC','IKC_d_HTTP','IKC_d_HTTP_client']
+--- input: ['POEIKCdaemon::Utility','publish_IKC','IKC_d_HTTP','IKC_d_HTTP_client']
+--- expected: 1
+
+=== 7	is	IKC_d_HTTP/enqueue_respond	'IKC_d_HTTP/enqueue_respond' => ['http://search.cpan.org/~suzuki/']
+--- input: ['http://search.cpan.org/~suzuki/']
+--- expected: 1
+
+=== 8	pass	sleep(1)	sleep
+--- input: ['POEIKCdaemon::Utility' => 'get_VERSION']
+--- expected: 1
+
+=== 9	like	IKC_d_HTTP/dequeue_respond	'IKC_d_HTTP/dequeue_respond' => []
+--- input: 
+--- expected: html

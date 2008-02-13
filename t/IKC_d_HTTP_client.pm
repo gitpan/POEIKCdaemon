@@ -42,7 +42,6 @@ sub enqueue {
 	my $poe = sweet_args;
 	my $kernel = $poe->kernel;
 	my ($url_orList) = @{$poe->args};
-	warn $url_orList;
 	POEIKCdaemon::Utility::_DEBUG_log($url_orList);
 	$poe->kernel->yield('enqueue_request', $url_orList);
 	return 1;
